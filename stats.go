@@ -2,15 +2,14 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	as "github.com/aerospike/aerospike-client-go"
 	"net"
+	"strings"
 )
 
 var client *as.Client
 var scanpol *as.ScanPolicy
 var err error
-
 
 func verbLog(str string) {
 	if *verbose {
@@ -34,9 +33,9 @@ func findLocalIps() error {
 			var ip net.IP
 			switch v := addr.(type) {
 			case *net.IPNet:
-					ip = v.IP
+				ip = v.IP
 			case *net.IPAddr:
-					ip = v.IP
+				ip = v.IP
 			}
 			localIps[ip.String()] = true // storing this as a map in case we call twice, don't want dupes
 		}
@@ -54,7 +53,7 @@ func aeroInit() error {
 	if err != nil || !client.IsConnected() {
 		fmt.Println("Exception while establishing connection", err)
 		return err
-	}	
+	}
 	verbLog(fmt.Sprint("Connected:", client.IsConnected()))
 	scanpol = as.NewScanPolicy()
 	scanpol.ConcurrentNodes = false
@@ -65,7 +64,6 @@ func aeroInit() error {
 	scanpol.RecordQueueSize = *recordQueueSize
 	return nil
 }
-
 
 func getLocalNode() *as.Node {
 	verbLog("Finding local node.")
@@ -86,7 +84,7 @@ func getLocalNode() *as.Node {
 		verbLog("Comparing against local ip list..")
 		for localIP := range localIps {
 			if localIP == nodeaddrStr {
-				verbLog(fmt.Sprint("found node with matching localip ", localIP,"==", node))
+				verbLog(fmt.Sprint("found node with matching localip ", localIP, "==", node))
 				localNode = node
 			}
 		}
@@ -121,7 +119,6 @@ func updateStats() string {
 	running = true
 	recs, _ := client.ScanNode(scanpol, localNode, *namespace, *set)
 	total := 0
-	
 
 	for rec := range recs.Results() {
 		if *verbose {
@@ -145,7 +142,7 @@ func updateStats() string {
 		} else {
 			skey = fmt.Sprint(key)
 		}
-		if minBucket == 0 || (key < minBucket && results[key] > 0)  {
+		if minBucket == 0 || (key < minBucket && results[key] > 0) {
 			minBucket = key
 		}
 		expirationTTL.WithLabelValues(skey, *namespace).Set(float64(results[key]))
@@ -155,7 +152,7 @@ func updateStats() string {
 
 	// if no records were scanned, then do not report a minBucket.
 	if total > 0 {
-		expirationTTL.WithLabelValues("minBucket", *namespace).Set(float64(minBucket))		
+		expirationTTL.WithLabelValues("minBucket", *namespace).Set(float64(minBucket))
 	} else {
 		expirationTTL.DeleteLabelValues("minBucket", *namespace)
 	}

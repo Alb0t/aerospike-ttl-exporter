@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/carlescere/scheduler"
 	"github.com/prometheus/client_golang/prometheus"
+	"os"
 )
 
 var (
@@ -28,7 +29,7 @@ var (
 	frequencySecs       = flag.Int("frequencySecs", 300, "how often to run the scan to report data (seconds)?")
 	recordQueueSize     = flag.Int("recordQueueSize", 50, "Number of records to place in queue before blocking.")
 	verbose             = flag.Bool("verbose", false, "Print more stuff.")
-	localIPOverride = flag.String("localIPOverride", "", "FOR TESTING ONLYYY!!!!!!!")
+	localIPOverride     = flag.String("localIPOverride", "", "FOR TESTING ONLYYY!!!!!!!")
 )
 
 var running = false
@@ -36,10 +37,7 @@ var localIps = make(map[string]bool)
 var results = make(map[uint32]int)
 
 func init() {
-  if *namespace == "" {
-    fmt.Println("Must specify a namespace to montior.")
-    os.Exit(1)
-  }
+
 	// Metrics have to be registered to be exposed:
 	prometheus.MustRegister(expirationTTL)
 
@@ -60,6 +58,10 @@ func init() {
 			"\n\t-verbose=", *verbose,
 			"\n\t-localIPOverride", *localIPOverride,
 		)
+	}
+	if *namespace == "" {
+		fmt.Println("Must specify a namespace to montior.")
+		os.Exit(1)
 	}
 	if *verbose {
 		fmt.Println("Calling aeroInit()")
