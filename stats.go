@@ -12,12 +12,18 @@ var scanpol *as.ScanPolicy
 var err error
 
 func verbLog(str string) {
+	// im lazy and havent looked into loggers
 	if *verbose {
 		fmt.Println("[VERBOSE]:", str)
 	}
 }
 
 func findLocalIps() error {
+	// this function is used to find the local node that the code is running on.
+	// by default, this is client.getnodes[0] - but if the node stops/starts, we don't want it
+	// to automatically fail over to a DIFFERENT node. That would be bad.
+	// this should only be called once.
+	// mostly copy pasta from stack overflow
 	verbLog("Fetching local interfaces")
 	ifaces, ierr := net.Interfaces()
 	if ierr != nil {
@@ -40,13 +46,11 @@ func findLocalIps() error {
 			localIps[ip.String()] = true // storing this as a map in case we call twice, don't want dupes
 		}
 	}
-	if localIPOverride != nil {
-		localIps[*localIPOverride] = true
-	}
 	return nil
 }
 
 func aeroInit() error {
+	//function to define policies and connect to aerospike.
 	verbLog(fmt.Sprint("Connecting to ", *nodeAddr, "..."))
 	client, err = as.NewClient(*nodeAddr, 3000)
 
@@ -58,7 +62,7 @@ func aeroInit() error {
 	scanpol = as.NewScanPolicy()
 	scanpol.ConcurrentNodes = false
 	scanpol.Priority = as.LOW
-	scanpol.ScanPercent = *scanPercent
+	//scanpol.ScanPercent = *scanPercent
 	scanpol.IncludeBinData = false
 	scanpol.FailOnClusterChange = *failOnClusterChange
 	scanpol.RecordQueueSize = *recordQueueSize
@@ -91,33 +95,38 @@ func getLocalNode() *as.Node {
 	}
 	return localNode
 }
+
 func runner() {
-	res := updateStats()
-	if res != "" {
-		fmt.Println("There was a problem updating the stats.", res)
+	fmt.Println(namespaceSetsMap)
+	for ns := range namespaceSetsMap {
+		// if for some reason the scheduler calls us concurrently, just skip the new runs until the existing one is done
+		if running {
+			fmt.Println("Already running. Skipping.")
+		}
+		running = true
+		namespaceSet := strings.Split(ns, ":")
+		err := updateStats(namespaceSet[0], namespaceSet[1], ns)
+		if err != "" {
+			fmt.Println("There was a problem updating the stats.", err)
+		}
+		running = false
 	}
 }
 
-func updateStats() string {
+func updateStats(namespace string, set string, namespaceSet string) string {
 	verbLog(fmt.Sprint("Running:", running))
 	if client == nil || client.IsConnected() == false {
 		err := aeroInit()
 		if err != nil {
-			running = false
 			return "Failure during aeroInit()."
 		}
-	}
-	if running {
-		fmt.Println("Already running. Skipping.")
-		return "Already running."
 	}
 	localNode := getLocalNode()
 	if localNode == nil {
 		return "Did not find self in node list"
 	}
-	verbLog("Beginning scan job..")
-	running = true
-	recs, _ := client.ScanNode(scanpol, localNode, *namespace, *set)
+	verbLog(fmt.Sprint("Beginning scan job for ns:", namespace, ", set:", set))
+	recs, _ := client.ScanNode(scanpol, localNode, namespace, set)
 	total := 0
 
 	for rec := range recs.Results() {
@@ -128,35 +137,39 @@ func updateStats() string {
 		}
 		if rec.Err == nil {
 			total++
-			expireTimeInDays := rec.Record.Expiration / 86400.0
-			results[expireTimeInDays]++
+			expireTimeInDays := rec.Record.Expiration / 86400
+			resultMap[namespaceSet][expireTimeInDays]++
 		} else {
 			fmt.Println("Error while inspecting record.", rec.Err)
 		}
+		if total >= *recordCount {
+			recs.Close() // close the record set to stop the query
+			break
+		}
 	}
-	var minBucket uint32 = 0
-	for key := range results {
+
+	var minBucket uint32
+	for key := range resultMap[namespaceSet] {
 		var skey string
 		if key == 49710 {
 			skey = "unexpirable"
 		} else {
 			skey = fmt.Sprint(key)
 		}
-		if minBucket == 0 || (key < minBucket && results[key] > 0) {
+		if minBucket == 0 || (key < minBucket && resultMap[namespaceSet][key] > 0) {
 			minBucket = key
 		}
-		expirationTTL.WithLabelValues(skey, *namespace).Set(float64(results[key]))
-		results[key] = 0 //zero back out the result in case this key goes away, report 0.
+		expirationTTL.WithLabelValues(skey, namespace, set).Set(float64(resultMap[namespaceSet][key]))
+		resultMap[namespaceSet][key] = 0 //zero back out the result in case this key goes away, report 0.
 	}
-	expirationTTL.WithLabelValues("total", *namespace).Set(float64(total))
+	expirationTTL.WithLabelValues("total", namespace, set).Set(float64(total))
 
 	// if no records were scanned, then do not report a minBucket.
 	if total > 0 {
-		expirationTTL.WithLabelValues("minBucket", *namespace).Set(float64(minBucket))
+		expirationTTL.WithLabelValues("minBucket", namespace, set).Set(float64(minBucket))
 	} else {
-		expirationTTL.DeleteLabelValues("minBucket", *namespace)
+		expirationTTL.DeleteLabelValues("minBucket", namespace, set)
 	}
-	fmt.Println("End Scan, inspected", total, "records.")
-	running = false
+	fmt.Println("End Scan, inspected", total, "records in namespace:", namespace, ", set:", set)
 	return ""
 }
