@@ -44,20 +44,18 @@ func init() {
 
 	// parse flags here instead of main because this gets called FIRST
 	flag.Parse()
-	if *verbose {
-		fmt.Println("Verbose!!")
-		fmt.Println("Printing cmdline args/defaults:",
-			"\n\t-listenPort=", *listenPort,
-			"\n\t-nodeAddr=", *nodeAddr,
-			"\n\t-namespaceSets=", *namespaceSets,
-			"\n\t-recordCount=", *recordCount,
-			"\n\t-failOnClusterChange=", *failOnClusterChange,
-			"\n\t-reportCount=", *reportCount,
-			"\n\t-frequencySecs=", *frequencySecs,
-			"\n\t-recordQueueSize=", *recordQueueSize,
-			"\n\t-verbose=", *verbose,
-		)
-	}
+
+	fmt.Println("Printing cmdline args/defaults:",
+		"\n\t-listenPort=", *listenPort,
+		"\n\t-nodeAddr=", *nodeAddr,
+		"\n\t-namespaceSets=", *namespaceSets,
+		"\n\t-recordCount=", *recordCount,
+		"\n\t-failOnClusterChange=", *failOnClusterChange,
+		"\n\t-reportCount=", *reportCount,
+		"\n\t-frequencySecs=", *frequencySecs,
+		"\n\t-recordQueueSize=", *recordQueueSize,
+		"\n\t-verbose=", *verbose,
+	)
 	if *namespaceSets == "" {
 		fmt.Println("Must specify a namespace to montior.")
 		os.Exit(1)

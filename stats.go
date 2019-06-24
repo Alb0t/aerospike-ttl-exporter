@@ -97,7 +97,7 @@ func getLocalNode() *as.Node {
 }
 
 func runner() {
-	fmt.Println(namespaceSetsMap)
+	verbLog(fmt.Sprint(namespaceSetsMap))
 	for ns := range namespaceSetsMap {
 		// if for some reason the scheduler calls us concurrently, just skip the new runs until the existing one is done
 		if running {
