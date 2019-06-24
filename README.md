@@ -1,5 +1,7 @@
 # aerospike-ttl-prom-exporter
 
+A prometheus exporter than scans record ttl for Aerospike and exports it.
+
 # The problem:
 tl;dr - this allows us to measure storage capacity.
 
