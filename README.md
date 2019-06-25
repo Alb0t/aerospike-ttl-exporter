@@ -34,3 +34,7 @@ aerospike_expirationTTL{days="total",namespace="mynamespace",set="testset"} 738
 aerospike_expirationTTL{days="unexpirable",namespace="mynamespace",set="testset"} 1
 etc.....
 ```
+
+# To use:
+Grab a release from https://github.com/Alb0t/aerospike-ttl-exporter/releases .
+Extract and run the binary, or create a systemd service file with options.
