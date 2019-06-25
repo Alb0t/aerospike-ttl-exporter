@@ -23,12 +23,13 @@ var (
 	listenPort          = flag.String("listen", ":9146", "listen address for prometheus")
 	nodeAddr            = flag.String("node", "127.0.0.1", "aerospike node")
 	namespaceSets       = flag.String("namespaceSets", "", "namespace:set comma delimited. Ex: myns:myset,myns2:myset3,myns3:,myns4 - set optional, but colon is not")
-	recordCount         = flag.Int("recordCount", 3000000, "How many records to stop scanning at?")
 	failOnClusterChange = flag.Bool("failOnClusterChange", false, "should we abort the scan on cluster change?")
 	reportCount         = flag.Int("reportCount", 100000, "How many records should be report on? Every <x> records will cause an entry in the stdout")
 	frequencySecs       = flag.Int("frequencySecs", 300, "how often to run the scan to report data (seconds)?")
 	recordQueueSize     = flag.Int("recordQueueSize", 50, "Number of records to place in queue before blocking.")
 	verbose             = flag.Bool("verbose", false, "Print more stuff.")
+	recordCount         = flag.Int("recordCount", 3000000, "How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less.")
+	scanPercent         = flag.Int("scanPercent", 1, "What percentage of data to scan? Will stop at recordCount or scanPercent, whichever is less.")
 )
 
 // these are global because im lazy

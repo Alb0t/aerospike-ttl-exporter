@@ -63,7 +63,7 @@ func aeroInit() error {
 	scanpol = as.NewScanPolicy()
 	scanpol.ConcurrentNodes = false
 	scanpol.Priority = as.LOW
-	//scanpol.ScanPercent = *scanPercent
+	scanpol.ScanPercent = *scanPercent
 	scanpol.IncludeBinData = false
 	scanpol.FailOnClusterChange = *failOnClusterChange
 	scanpol.RecordQueueSize = *recordQueueSize
