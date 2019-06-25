@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	as "github.com/aerospike/aerospike-client-go"
+	log "github.com/sirupsen/logrus"
 	"net"
-	"os"
 	"strings"
 )
 
@@ -12,29 +12,22 @@ var client *as.Client
 var scanpol *as.ScanPolicy
 var err error
 
-func verbLog(str string) {
-	// im lazy and havent looked into loggers
-	if *verbose {
-		fmt.Println("[VERBOSE]:", str)
-	}
-}
-
 func findLocalIps() error {
 	// this function is used to find the local node that the code is running on.
 	// by default, this is client.getnodes[0] - but if the node stops/starts, we don't want it
 	// to automatically fail over to a DIFFERENT node. That would be bad.
 	// this should only be called once.
 	// mostly copy pasta from stack overflow
-	verbLog("Fetching local interfaces")
+	log.Info("Fetching local interfaces")
 	ifaces, ierr := net.Interfaces()
 	if ierr != nil {
-		fmt.Println("Error while retrieving net.Interfaces:", ierr)
+		log.Error("Error while retrieving net.Interfaces:", ierr)
 	}
 	for _, i := range ifaces {
-		verbLog("Fetching addr for iface")
+		log.Debug("Fetching addr for iface")
 		addrs, errAd := i.Addrs()
 		if errAd != nil {
-			fmt.Println("Error while retrieving interface addresss:", errAd)
+			log.Error("Error while retrieving interface addresss:", errAd)
 		}
 		for _, addr := range addrs {
 			var ip net.IP
@@ -47,19 +40,20 @@ func findLocalIps() error {
 			localIps[ip.String()] = true // storing this as a map in case we call twice, don't want dupes
 		}
 	}
+	log.Debug("Printing localIp map:", localIps)
 	return nil
 }
 
 func aeroInit() error {
 	//function to define policies and connect to aerospike.
-	verbLog(fmt.Sprint("Connecting to ", *nodeAddr, "..."))
+	log.Info("Connecting to ", *nodeAddr, "...")
 	client, err = as.NewClient(*nodeAddr, 3000)
 
 	if err != nil || !client.IsConnected() {
-		fmt.Println("Exception while establishing connection", err)
+		log.Error("Exception while establishing connection:", err)
 		return err
 	}
-	verbLog(fmt.Sprint("Connected:", client.IsConnected()))
+	log.Info("Connected:", client.IsConnected())
 	scanpol = as.NewScanPolicy()
 	scanpol.ConcurrentNodes = false
 	scanpol.Priority = as.LOW
@@ -71,25 +65,25 @@ func aeroInit() error {
 }
 
 func getLocalNode() *as.Node {
-	verbLog("Finding local node.")
+	log.Debug("Finding local node.")
 	var localNode *as.Node
-	verbLog("Fetching membership list..")
+	log.Debug("Fetching membership list..")
 	nodes := client.GetNodes()
-	verbLog("Looping through active cluster nodes")
+	log.Debug("Looping through active cluster nodes")
 	for _, node := range nodes {
 		// convert the node to a string, then split that to find the addr
 
 		nodeStr := fmt.Sprint(node)
 		nodeAddrStrWithPort := strings.Split(nodeStr, " ")
 		if nodeAddrStrWithPort == nil || len(nodeAddrStrWithPort) != 2 {
-			fmt.Println("Did not find expected node format in client.GetNodes")
+			log.Error("Did not find expected node format in client.GetNodes")
 			continue
 		}
 		nodeaddrStr := strings.Split(nodeAddrStrWithPort[1], ":")[0]
-		verbLog("Comparing against local ip list..")
+		log.Debug("Comparing against local ip list..")
 		for localIP := range localIps {
 			if localIP == nodeaddrStr {
-				verbLog(fmt.Sprint("found node with matching localip ", localIP, "==", node))
+				log.Debug("found node with matching localip ", localIP, "==", node)
 				localNode = node
 			}
 		}
@@ -98,11 +92,12 @@ func getLocalNode() *as.Node {
 }
 
 func runner() {
-	verbLog(fmt.Sprint(namespaceSetsMap))
+	log.Debug("Namespace Sets Map:", namespaceSetsMap)
 	for ns := range namespaceSetsMap {
 		// if for some reason the scheduler calls us concurrently, just skip the new runs until the existing one is done
+		// probably just paranoia.
 		if running {
-			fmt.Println("Already running. Skipping.")
+			log.Warn("Already running. Skipping.")
 		}
 		running = true
 		namespaceSet := strings.Split(ns, ":")
@@ -114,21 +109,20 @@ func runner() {
 			namespace = namespaceSet[0]
 			set = namespaceSet[1]
 		} else {
-			fmt.Println("Couldn't parse format of ", ns)
-			os.Exit(1)
+			log.Fatal("Couldn't parse format of ", ns)
 		}
 		// while I am splitting namespace and set for aerospike calls and metric display,
 		// the metrics are stored in a map so preserving the original "ns" var
 		err := updateStats(namespace, set, ns)
 		if err != "" {
-			fmt.Println("There was a problem updating the stats.", err)
+			log.Error("There was a problem updating the stats.", err)
 		}
 		running = false
 	}
 }
 
 func updateStats(namespace string, set string, namespaceSet string) string {
-	verbLog(fmt.Sprint("Running:", running))
+	log.Debug("Running:", running)
 	if client == nil || client.IsConnected() == false {
 		err := aeroInit()
 		if err != nil {
@@ -139,24 +133,34 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 	if localNode == nil {
 		return "Did not find self in node list"
 	}
-	verbLog(fmt.Sprint("Beginning scan job for ns:", namespace, ", set:", set))
+	log.WithFields(log.Fields{
+		"namespace": namespace,
+		"set":       set,
+	}).Info("Begin scan/inspection.")
 	recs, _ := client.ScanNode(scanpol, localNode, namespace, set)
 	total := 0
+	totalInspected := 0
 
 	for rec := range recs.Results() {
 		if *verbose {
 			if total%*reportCount == 0 {
-				fmt.Println("Processed ", total, " records...")
+				log.Info("Processed ", total, " records...")
 			}
 		}
 		if rec.Err == nil {
-			total++
-			expireTimeInDays := rec.Record.Expiration / 86400
-			resultMap[namespaceSet][expireTimeInDays]++
+			totalInspected++
+			if rec.Record.Expiration == 4294967295 {
+				log.Debug("Found non-expirable record, not adding to total or exporting.")
+			} else {
+				total++
+				expireTimeInDays := rec.Record.Expiration / 86400
+				resultMap[namespaceSet][expireTimeInDays]++
+			}
 		} else {
-			fmt.Println("Error while inspecting record.", rec.Err)
+			log.Error("Error while inspecting scan results: ", rec.Err)
 		}
-		if total >= *recordCount {
+		if *recordCount != -1 && total >= *recordCount {
+			log.Debug("Retrieved ", total, " records. Which is >= the limit specified of ", *recordCount, ". Will terminate query now.")
 			recs.Close() // close the record set to stop the query
 			break
 		}
@@ -184,6 +188,11 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 	} else {
 		expirationTTL.DeleteLabelValues("minBucket", namespace, set)
 	}
-	fmt.Println("End Scan, inspected", total, "records in namespace:", namespace, ", set:", set)
+	log.WithFields(log.Fields{
+		"total(records exported)": total,
+		"totalInspected":          totalInspected,
+		"namespace":               namespace,
+		"set":                     set,
+	}).Info("Scan complete.")
 	return ""
 }

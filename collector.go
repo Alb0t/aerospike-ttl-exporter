@@ -2,9 +2,9 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"github.com/carlescere/scheduler"
 	"github.com/prometheus/client_golang/prometheus"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"strings"
 )
@@ -28,7 +28,7 @@ var (
 	frequencySecs       = flag.Int("frequencySecs", 300, "how often to run the scan to report data (seconds)?")
 	recordQueueSize     = flag.Int("recordQueueSize", 50, "Number of records to place in queue before blocking.")
 	verbose             = flag.Bool("verbose", false, "Print more stuff.")
-	recordCount         = flag.Int("recordCount", 3000000, "How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less.")
+	recordCount         = flag.Int("recordCount", 3000000, "How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less. Pass '-recordCount=-1' to only use scanPercent.")
 	scanPercent         = flag.Int("scanPercent", 1, "What percentage of data to scan? Will stop at recordCount or scanPercent, whichever is less.")
 )
 
@@ -39,26 +39,36 @@ var namespaceSetsMap = make(map[string]bool)    // map to prevent duplicates, li
 var resultMap = make(map[string]map[uint32]int) // map of namespace:set -> { ttl, count } stored globally so we can report 0 on unseen metrics if the server suddenly doesn't have any
 
 func init() {
+	flag.Parse()
+	log.SetFormatter(&log.TextFormatter{
+		FullTimestamp: true,
+	})
+	log.SetOutput(os.Stdout)
+
+	if *verbose {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 
 	// Metrics have to be registered to be exposed:
 	prometheus.MustRegister(expirationTTL)
 
-	// parse flags here instead of main because this gets called FIRST
-	flag.Parse()
+	log.WithFields(log.Fields{
+		"-listenPort":          *listenPort,
+		"-nodeAddr":            *nodeAddr,
+		"-namespaceSets":       *namespaceSets,
+		"-recordCount":         *recordCount,
+		"-failOnClusterChange": *failOnClusterChange,
+		"-reportCount":         *reportCount,
+		"-frequencySecs":       *frequencySecs,
+		"-recordQueueSize":     *recordQueueSize,
+		"-verbose":             *verbose,
+		"-scanPercent":         *scanPercent,
+	}).Info("Showing passable parameters and their current values.")
 
-	fmt.Println("Printing cmdline args/defaults:",
-		"\n\t-listenPort=", *listenPort,
-		"\n\t-nodeAddr=", *nodeAddr,
-		"\n\t-namespaceSets=", *namespaceSets,
-		"\n\t-recordCount=", *recordCount,
-		"\n\t-failOnClusterChange=", *failOnClusterChange,
-		"\n\t-reportCount=", *reportCount,
-		"\n\t-frequencySecs=", *frequencySecs,
-		"\n\t-recordQueueSize=", *recordQueueSize,
-		"\n\t-verbose=", *verbose,
-	)
 	if *namespaceSets == "" {
-		fmt.Println("Must specify a namespace to montior.")
+		log.Fatal("Must specify a namespace to montior with '-namespaceSets'. Try -h for help")
 		os.Exit(1)
 	} else {
 		// transform a string like "ns1:set1,ns2:set2,ns3:,ns4:set1" into a map
@@ -72,22 +82,19 @@ func init() {
 			namespaceSetsMap[namespaceSetsArr[namespaceSet]] = true
 		}
 	}
-	if *verbose {
-		fmt.Println("Calling aeroInit()")
-	}
-
-	// create client connection and setup policy
-	aeroInit()
 
 	// create a list of local ips to compare against and ensure we are checking the local node only
 	// this should only need to happen once
 	err := findLocalIps()
 	if err != nil {
-		fmt.Println("Exception in findLocalIps:", err)
+		log.Error("Exception in findLocalIps:", err)
 	}
 
+	// create client connection and setup policy
+	aeroInit()
+
 	if *verbose {
-		fmt.Println("Starting scheduler..")
+		log.Info("Starting scheduler..")
 	}
 	// start process to start polling for stats
 	//scheduler.Every(*frequencyMins).Minutes().Run(updateStats)
