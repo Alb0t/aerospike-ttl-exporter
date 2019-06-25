@@ -4,6 +4,7 @@ import (
 	"fmt"
 	as "github.com/aerospike/aerospike-client-go"
 	"net"
+	"os"
 	"strings"
 )
 
@@ -105,7 +106,20 @@ func runner() {
 		}
 		running = true
 		namespaceSet := strings.Split(ns, ":")
-		err := updateStats(namespaceSet[0], namespaceSet[1], ns)
+		var namespace, set string
+		if len(namespaceSet) == 1 {
+			namespace = namespaceSet[0]
+			set = ""
+		} else if len(namespaceSet) == 2 {
+			namespace = namespaceSet[0]
+			set = namespaceSet[1]
+		} else {
+			fmt.Println("Couldn't parse format of ", ns)
+			os.Exit(1)
+		}
+		// while I am splitting namespace and set for aerospike calls and metric display,
+		// the metrics are stored in a map so preserving the original "ns" var
+		err := updateStats(namespace, set, ns)
 		if err != "" {
 			fmt.Println("There was a problem updating the stats.", err)
 		}

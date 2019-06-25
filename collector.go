@@ -63,6 +63,9 @@ func init() {
 		// transform a string like "ns1:set1,ns2:set2,ns3:,ns4:set1" into a map
 		namespaceSetsArr := strings.Split(*namespaceSets, ",")
 		for namespaceSet := range namespaceSetsArr {
+			if namespaceSetsArr[namespaceSet] == "" { // handle trailing comma
+				continue
+			}
 			resultMap[namespaceSetsArr[namespaceSet]] = map[uint32]int{}
 			// string should be ns:set
 			namespaceSetsMap[namespaceSetsArr[namespaceSet]] = true
