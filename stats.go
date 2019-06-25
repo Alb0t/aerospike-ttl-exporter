@@ -168,12 +168,7 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 
 	var minBucket uint32
 	for key := range resultMap[namespaceSet] {
-		var skey string
-		if key == 49710 {
-			skey = "unexpirable"
-		} else {
-			skey = fmt.Sprint(key)
-		}
+		skey := fmt.Sprint(key)
 		if minBucket == 0 || (key < minBucket && resultMap[namespaceSet][key] > 0) {
 			minBucket = key
 		}
