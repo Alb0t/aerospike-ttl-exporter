@@ -40,7 +40,6 @@ Extract and run the binary, or create a systemd service file with options.
 
 # Usage/params:
 ```
-./aerospike-ttl-exporter -h
 Usage of ./aerospike-ttl-exporter:
   -failOnClusterChange
     	should we abort the scan on cluster change?
@@ -53,7 +52,7 @@ Usage of ./aerospike-ttl-exporter:
   -node string
     	aerospike node (default "127.0.0.1")
   -recordCount int
-    	How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less. (default 3000000)
+    	How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less. Pass '-recordCount=-1' to only use scanPercent. (default 3000000)
   -recordQueueSize int
     	Number of records to place in queue before blocking. (default 50)
   -reportCount int
