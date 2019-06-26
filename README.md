@@ -31,7 +31,6 @@ aerospike_expirationTTL{days="98",namespace="mynamespace",set="testset"} 1
 aerospike_expirationTTL{days="99",namespace="mynamespace",set="testset"} 1
 aerospike_expirationTTL{days="minBucket",namespace="mynamespace",set="testset"} 1
 aerospike_expirationTTL{days="total",namespace="mynamespace",set="testset"} 738
-aerospike_expirationTTL{days="unexpirable",namespace="mynamespace",set="testset"} 1
 etc.....
 ```
 
