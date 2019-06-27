@@ -129,7 +129,7 @@ Usage of ./aerospike-ttl-exporter:
   -listen string
     	listen address for prometheus (default ":9146")
   -namespaceSets string
-    	namespace:set comma delimited. Ex: myns:myset,myns2:myset3,myns3:,myns4 - set optional, but colon is not
+    	namespace:set comma delimited. Ex: 'myns:myset,myns2:myset3,myns3:,myns4:' - set optional, but colon is not
   -node string
     	aerospike node (default "127.0.0.1")
   -recordCount int

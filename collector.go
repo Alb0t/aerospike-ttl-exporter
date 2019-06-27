@@ -32,7 +32,7 @@ var (
 var (
 	listenPort          = flag.String("listen", ":9146", "listen address for prometheus")
 	nodeAddr            = flag.String("node", "127.0.0.1", "aerospike node")
-	namespaceSets       = flag.String("namespaceSets", "", "namespace:set comma delimited. Ex: myns:myset,myns2:myset3,myns3:,myns4 - set optional, but colon is not")
+	namespaceSets       = flag.String("namespaceSets", "", "namespace:set comma delimited. Ex: 'myns:myset,myns2:myset3,myns3:,myns4:'- set optional, but colon is not")
 	failOnClusterChange = flag.Bool("failOnClusterChange", false, "should we abort the scan on cluster change?")
 	reportCount         = flag.Int("reportCount", 100000, "How many records should be report on? Every <x> records will cause an entry in the stdout")
 	frequencySecs       = flag.Int("frequencySecs", 300, "how often to run the scan to report data (seconds)?")
