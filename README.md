@@ -118,6 +118,10 @@ Extract and run the binary, or create a systemd service file with options.
 # Usage/params:
 ```
 Usage of ./aerospike-ttl-exporter:
+  -exportPercentages
+    	Export percentage distribution per bucket out of total. (default true)
+  -exportRecordCount
+    	Export record count per bucket.
   -failOnClusterChange
     	should we abort the scan on cluster change?
   -frequencySecs int
