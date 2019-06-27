@@ -150,7 +150,8 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 		if rec.Err == nil {
 			totalInspected++
 			if rec.Record.Expiration == 4294967295 {
-				log.Debug("Found non-expirable record, not adding to total or exporting.")
+				//log.Debug("Found non-expirable record, not adding to total or exporting.")
+				// too noisy
 			} else {
 				total++
 				expireTimeInDays := rec.Record.Expiration / 86400
@@ -172,16 +173,38 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 		if minBucket == 0 || (key < minBucket && resultMap[namespaceSet][key] > 0) {
 			minBucket = key
 		}
-		expirationTTL.WithLabelValues(skey, namespace, set).Set(float64(resultMap[namespaceSet][key]))
+		if *exportPercentages {
+			percentInThisBucket := float64(resultMap[namespaceSet][key]) * float64(100) / float64(total)
+			expirationTTLPercents.WithLabelValues(skey, namespace, set).Set(float64(percentInThisBucket))
+		}
+		if *exportRecordCount {
+			expirationTTLCounts.WithLabelValues(skey, namespace, set).Set(float64(resultMap[namespaceSet][key]))
+		}
 		resultMap[namespaceSet][key] = 0 //zero back out the result in case this key goes away, report 0.
 	}
-	expirationTTL.WithLabelValues("total", namespace, set).Set(float64(total))
+
+	if *exportPercentages {
+		expirationTTLPercents.WithLabelValues("total", namespace, set).Set(float64(total))
+	}
+	if *exportRecordCount {
+		expirationTTLCounts.WithLabelValues("total", namespace, set).Set(float64(total))
+	}
 
 	// if no records were scanned, then do not report a minBucket.
 	if total > 0 {
-		expirationTTL.WithLabelValues("minBucket", namespace, set).Set(float64(minBucket))
+		if *exportPercentages {
+			expirationTTLPercents.WithLabelValues("minBucket", namespace, set).Set(float64(minBucket))
+		}
+		if *exportRecordCount {
+			expirationTTLCounts.WithLabelValues("minBucket", namespace, set).Set(float64(minBucket))
+		}
 	} else {
-		expirationTTL.DeleteLabelValues("minBucket", namespace, set)
+		if *exportPercentages {
+			expirationTTLPercents.DeleteLabelValues("minBucket", namespace, set)
+		}
+		if *exportRecordCount {
+			expirationTTLCounts.DeleteLabelValues("minBucket", namespace, set)
+		}
 	}
 	log.WithFields(log.Fields{
 		"total(records exported)": total,

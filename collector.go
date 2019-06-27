@@ -10,10 +10,20 @@ import (
 )
 
 var (
-	expirationTTL = prometheus.NewGaugeVec(
+	expirationTTLCounts = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "aerospike_expirationTTL",
-			Help: "Days in which this many records will expire. Sampled locally.",
+			Name: "aerospike_expirationTTL_counts",
+			Help: "Days in which this many records will expire. Sampled locally. Shows counts of how many records were found in each bucket.",
+		},
+		[]string{"days", "namespace", "set"},
+	)
+)
+
+var (
+	expirationTTLPercents = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aerospike_expirationTTL_perc",
+			Help: "Days in which this many records will expire. Sampled locally. Shows percentages of how many records were found in each bucket vs total records scanned.",
 		},
 		[]string{"days", "namespace", "set"},
 	)
@@ -30,6 +40,8 @@ var (
 	verbose             = flag.Bool("verbose", false, "Print more stuff.")
 	recordCount         = flag.Int("recordCount", 3000000, "How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less. Pass '-recordCount=-1' to only use scanPercent.")
 	scanPercent         = flag.Int("scanPercent", 1, "What percentage of data to scan? Will stop at recordCount or scanPercent, whichever is less.")
+	exportPercentages   = flag.Bool("exportPercentages", true, "Export percentage distribution per bucket out of total.")
+	exportRecordCount   = flag.Bool("exportRecordCount", false, "Export record count per bucket.")
 )
 
 // these are global because im lazy
@@ -51,8 +63,15 @@ func init() {
 		log.SetLevel(log.InfoLevel)
 	}
 
-	// Metrics have to be registered to be exposed:
-	prometheus.MustRegister(expirationTTL)
+	if *exportPercentages {
+		prometheus.MustRegister(expirationTTLPercents)
+	}
+	if *exportRecordCount {
+		prometheus.MustRegister(expirationTTLCounts)
+	}
+	if *exportPercentages == false && *exportRecordCount == false {
+		log.Fatal("Must export at least 1 metric, choose from percentage or record count - or both. Try -h for help.")
+	}
 
 	log.WithFields(log.Fields{
 		"-listenPort":          *listenPort,
@@ -65,6 +84,8 @@ func init() {
 		"-recordQueueSize":     *recordQueueSize,
 		"-verbose":             *verbose,
 		"-scanPercent":         *scanPercent,
+		"-exportPercentages":   *exportPercentages,
+		"-exportRecordCount":   *exportRecordCount,
 	}).Info("Showing passable parameters and their current values.")
 
 	if *namespaceSets == "" {
