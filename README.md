@@ -37,3 +37,29 @@ etc.....
 # To use:
 Grab a release from https://github.com/Alb0t/aerospike-ttl-exporter/releases .
 Extract and run the binary, or create a systemd service file with options.
+
+# Usage/params:
+```
+Usage of ./aerospike-ttl-exporter:
+  -failOnClusterChange
+    	should we abort the scan on cluster change?
+  -frequencySecs int
+    	how often to run the scan to report data (seconds)? (default 300)
+  -listen string
+    	listen address for prometheus (default ":9146")
+  -namespaceSets string
+    	namespace:set comma delimited. Ex: myns:myset,myns2:myset3,myns3:,myns4 - set optional, but colon is not
+  -node string
+    	aerospike node (default "127.0.0.1")
+  -recordCount int
+    	How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less. Pass '-recordCount=-1' to only use scanPercent. (default 3000000)
+  -recordQueueSize int
+    	Number of records to place in queue before blocking. (default 50)
+  -reportCount int
+    	How many records should be report on? Every <x> records will cause an entry in the stdout (default 100000)
+  -scanPercent int
+    	What percentage of data to scan? Will stop at recordCount or scanPercent, whichever is less. (default 1)
+  -verbose
+    	Print more stuff.
+      
+```
