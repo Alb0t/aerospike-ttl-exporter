@@ -12,7 +12,7 @@ import (
 var (
 	expirationTTLCounts = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "aerospike_expirationTTL_counts",
+			Name: "aerospike_ttl_counts",
 			Help: "Days in which this many records will expire. Sampled locally. Shows counts of how many records were found in each bucket.",
 		},
 		[]string{"days", "namespace", "set"},
@@ -22,7 +22,7 @@ var (
 var (
 	expirationTTLPercents = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "aerospike_expirationTTL_perc",
+			Name: "aerospike_ttl_percents",
 			Help: "Days in which this many records will expire. Sampled locally. Shows percentages of how many records were found in each bucket vs total records scanned.",
 		},
 		[]string{"days", "namespace", "set"},
@@ -34,7 +34,7 @@ var (
 	nodeAddr            = flag.String("node", "127.0.0.1", "aerospike node")
 	namespaceSets       = flag.String("namespaceSets", "", "namespace:set comma delimited. Ex: 'myns:myset,myns2:myset3,myns3:,myns4:'- set optional, but colon is not")
 	failOnClusterChange = flag.Bool("failOnClusterChange", false, "should we abort the scan on cluster change?")
-	reportCount         = flag.Int("reportCount", 100000, "How many records should be report on? Every <x> records will cause an entry in the stdout")
+	reportCount         = flag.Int("reportCount", 300000, "How many records should be report on? Every <x> records will cause an entry in the stdout")
 	frequencySecs       = flag.Int("frequencySecs", 300, "how often to run the scan to report data (seconds)?")
 	recordQueueSize     = flag.Int("recordQueueSize", 50, "Number of records to place in queue before blocking.")
 	verbose             = flag.Bool("verbose", false, "Print more stuff.")
