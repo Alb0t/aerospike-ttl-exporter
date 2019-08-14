@@ -140,7 +140,6 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 	recs, _ := client.ScanNode(scanpol, localNode, namespace, set)
 	total := 0
 	totalInspected := 0
-
 	for rec := range recs.Results() {
 		if *verbose {
 			if total%*reportCount == 0 {
@@ -154,8 +153,8 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 				// too noisy
 			} else {
 				total++
-				expireTimeInDays := rec.Record.Expiration / 86400
-				resultMap[namespaceSet][expireTimeInDays]++
+				expireTime := (rec.Record.Expiration / uint32(*exportTypeDivision)) * uint32(*exportBucketMultiply)
+				resultMap[namespaceSet][expireTime]++
 			}
 		} else {
 			log.Error("Error while inspecting scan results: ", rec.Err)
