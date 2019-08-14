@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	listenPort           = flag.String("listen", ":9633", "listen address for prometheus")
+	listenPort           = flag.String("listen", ":9635", "listen address for prometheus")
 	nodeAddr             = flag.String("node", "127.0.0.1", "aerospike node")
 	namespaceSets        = flag.String("namespaceSets", "", "namespace:set comma delimited. Ex: 'myns:myset,myns2:myset3,myns3:,myns4:'- set optional, but colon is not")
 	failOnClusterChange  = flag.Bool("failOnClusterChange", false, "should we abort the scan on cluster change?")
