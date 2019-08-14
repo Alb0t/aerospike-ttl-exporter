@@ -10,39 +10,25 @@ import (
 )
 
 var (
-	expirationTTLCounts = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "aerospike_ttl_counts",
-			Help: "Days in which this many records will expire. Sampled locally. Shows counts of how many records were found in each bucket.",
-		},
-		[]string{"days", "namespace", "set"},
-	)
+	listenPort           = flag.String("listen", ":9635", "listen address for prometheus")
+	nodeAddr             = flag.String("node", "127.0.0.1", "aerospike node")
+	namespaceSets        = flag.String("namespaceSets", "", "namespace:set comma delimited. Ex: 'myns:myset,myns2:myset3,myns3:,myns4:'- set optional, but colon is not")
+	failOnClusterChange  = flag.Bool("failOnClusterChange", false, "should we abort the scan on cluster change?")
+	reportCount          = flag.Int("reportCount", 300000, "How many records should be report on? Every <x> records will cause an entry in the stdout")
+	frequencySecs        = flag.Int("frequencySecs", 300, "how often to run the scan to report data (seconds)?")
+	recordQueueSize      = flag.Int("recordQueueSize", 50, "Number of records to place in queue before blocking.")
+	verbose              = flag.Bool("verbose", false, "Print more stuff.")
+	recordCount          = flag.Int("recordCount", 3000000, "How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less. Pass '-recordCount=-1' to only use scanPercent.")
+	scanPercent          = flag.Int("scanPercent", 1, "What percentage of data to scan? Will stop at recordCount or scanPercent, whichever is less.")
+	exportPercentages    = flag.Bool("exportPercentages", true, "Export percentage distribution per bucket out of total.")
+	exportRecordCount    = flag.Bool("exportRecordCount", false, "Export record count per bucket.")
+	exportType           = flag.String("exportType", "days", "What label should we give the bucket")
+	exportTypeDivision   = flag.Int("exportTypeDivision", 86400, "What should we divide by the seconds to get the bucket size?")
+	exportBucketMultiply = flag.Int("exportBucketMultiply", 1, "Multiply the bucket value by this before exporting")
 )
 
-var (
-	expirationTTLPercents = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "aerospike_ttl_percents",
-			Help: "Days in which this many records will expire. Sampled locally. Shows percentages of how many records were found in each bucket vs total records scanned.",
-		},
-		[]string{"days", "namespace", "set"},
-	)
-)
-
-var (
-	listenPort          = flag.String("listen", ":9146", "listen address for prometheus")
-	nodeAddr            = flag.String("node", "127.0.0.1", "aerospike node")
-	namespaceSets       = flag.String("namespaceSets", "", "namespace:set comma delimited. Ex: 'myns:myset,myns2:myset3,myns3:,myns4:'- set optional, but colon is not")
-	failOnClusterChange = flag.Bool("failOnClusterChange", false, "should we abort the scan on cluster change?")
-	reportCount         = flag.Int("reportCount", 300000, "How many records should be report on? Every <x> records will cause an entry in the stdout")
-	frequencySecs       = flag.Int("frequencySecs", 300, "how often to run the scan to report data (seconds)?")
-	recordQueueSize     = flag.Int("recordQueueSize", 50, "Number of records to place in queue before blocking.")
-	verbose             = flag.Bool("verbose", false, "Print more stuff.")
-	recordCount         = flag.Int("recordCount", 3000000, "How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less. Pass '-recordCount=-1' to only use scanPercent.")
-	scanPercent         = flag.Int("scanPercent", 1, "What percentage of data to scan? Will stop at recordCount or scanPercent, whichever is less.")
-	exportPercentages   = flag.Bool("exportPercentages", true, "Export percentage distribution per bucket out of total.")
-	exportRecordCount   = flag.Bool("exportRecordCount", false, "Export record count per bucket.")
-)
+var expirationTTLCounts *prometheus.GaugeVec
+var expirationTTLPercents *prometheus.GaugeVec
 
 // these are global because im lazy
 var running = false                             // bool to track whether a scan is running already or not.
@@ -63,6 +49,22 @@ func init() {
 		log.SetLevel(log.InfoLevel)
 	}
 
+	expirationTTLPercents = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aerospike_ttl_percents",
+			Help: "Time in which this many records will expire. Sampled locally. Shows percentages of how many records were found in each bucket vs total records scanned.",
+		},
+		[]string{*exportType, "namespace", "set"},
+	)
+
+	expirationTTLCounts = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aerospike_ttl_counts",
+			Help: "Time in which this many records will expire. Sampled locally. Shows counts of how many records were found in each bucket.",
+		},
+		[]string{*exportType, "namespace", "set"},
+	)
+
 	if *exportPercentages {
 		prometheus.MustRegister(expirationTTLPercents)
 	}
@@ -74,18 +76,21 @@ func init() {
 	}
 
 	log.WithFields(log.Fields{
-		"-listenPort":          *listenPort,
-		"-nodeAddr":            *nodeAddr,
-		"-namespaceSets":       *namespaceSets,
-		"-recordCount":         *recordCount,
-		"-failOnClusterChange": *failOnClusterChange,
-		"-reportCount":         *reportCount,
-		"-frequencySecs":       *frequencySecs,
-		"-recordQueueSize":     *recordQueueSize,
-		"-verbose":             *verbose,
-		"-scanPercent":         *scanPercent,
-		"-exportPercentages":   *exportPercentages,
-		"-exportRecordCount":   *exportRecordCount,
+		"-listenPort":           *listenPort,
+		"-nodeAddr":             *nodeAddr,
+		"-namespaceSets":        *namespaceSets,
+		"-recordCount":          *recordCount,
+		"-failOnClusterChange":  *failOnClusterChange,
+		"-reportCount":          *reportCount,
+		"-frequencySecs":        *frequencySecs,
+		"-recordQueueSize":      *recordQueueSize,
+		"-verbose":              *verbose,
+		"-scanPercent":          *scanPercent,
+		"-exportPercentages":    *exportPercentages,
+		"-exportRecordCount":    *exportRecordCount,
+		"-exportType":           *exportType,
+		"-exportTypeDivision":   *exportTypeDivision,
+		"-exportBucketMultiply": *exportBucketMultiply,
 	}).Info("Showing passable parameters and their current values.")
 
 	if *namespaceSets == "" {
