@@ -3,7 +3,7 @@
 A prometheus exporter than scans record ttl for Aerospike and exports it.
 
 # The problem:
-tl;dr - this allows us to measure storage capacity.
+tl;dr - this allows us to measure storage capacity in a situation where we store at-eviction.
 
 TTL (time-to-live) on a record dictates when the record will expire, and if evicting we need to measure the lowest bucket and trends of these ttls.
 
@@ -115,21 +115,28 @@ aerospike_ttl_percents{days="total",namespace="mynamespace",set=""} 70785
 Grab a release from https://github.com/Alb0t/aerospike-ttl-exporter/releases .
 Extract and run the binary, or create a systemd service file with options.
 
+
 # Usage/params:
 ```
 Usage of ./aerospike-ttl-exporter:
+  -exportBucketMultiply int
+    	Multiply the bucket value by this before exporting (default 1)
   -exportPercentages
     	Export percentage distribution per bucket out of total. (default true)
   -exportRecordCount
     	Export record count per bucket.
+  -exportType string
+    	What label should we give the bucket (default "days")
+  -exportTypeDivision int
+    	What should we divide by the seconds to get the bucket size? (default 86400)
   -failOnClusterChange
     	should we abort the scan on cluster change?
   -frequencySecs int
     	how often to run the scan to report data (seconds)? (default 300)
   -listen string
-    	listen address for prometheus (default ":9146")
+    	listen address for prometheus (default ":9634")
   -namespaceSets string
-    	namespace:set comma delimited. Ex: 'myns:myset,myns2:myset3,myns3:,myns4:' - set optional, but colon is not
+    	namespace:set comma delimited. Ex: 'myns:myset,myns2:myset3,myns3:,myns4:'- set optional, but colon is not
   -node string
     	aerospike node (default "127.0.0.1")
   -recordCount int
@@ -137,10 +144,27 @@ Usage of ./aerospike-ttl-exporter:
   -recordQueueSize int
     	Number of records to place in queue before blocking. (default 50)
   -reportCount int
-    	How many records should be report on? Every <x> records will cause an entry in the stdout (default 100000)
+    	How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
   -scanPercent int
     	What percentage of data to scan? Will stop at recordCount or scanPercent, whichever is less. (default 1)
   -verbose
     	Print more stuff.
       
 ```
+
+
+These options can be used to configure smaller/larger buckets:
+```
+  -exportType string
+    	What label should we give the bucket (default "days")
+  -exportTypeDivision int
+    	What should we divide by the seconds to get the bucket size? (default 86400)
+  -exportBucketMultiply int
+      Multiply the bucket value by this before exporting (default 1)
+ ```
+ 
+ For example, if you wanted 15 minute buckets, you could pass these as:
+ ```
+   -exportType=minutes -exportTypeDivision=900 -exportBucketMultiply=15 
+ ```
+ This would export things in 15 minute buckets, and report them as 'minutes'
