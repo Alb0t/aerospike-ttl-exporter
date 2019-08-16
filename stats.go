@@ -173,7 +173,7 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 	for key := range resultMap[namespaceSet] {
 		skey := fmt.Sprint(key)
 		log.Debug("Checking to see if ", key, " should be our minBucket.")
-		if minBucket == 0 || (key < minBucket && key > 0) {
+		if minBucket == 0 || (key < minBucket && resultMap[namespaceSet][key] > 0) {
 			minBucket = key
 			log.Debug("Setting minBucket to ", key)
 		} else {
