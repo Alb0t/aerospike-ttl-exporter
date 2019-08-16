@@ -11,7 +11,8 @@ import (
 
 var (
 	listenPort           = flag.String("listenPort", ":9634", "listen address for prometheus")
-	nodeAddr             = flag.String("node", "127.0.0.1", "aerospike node")
+	skipNodeCheck        = flag.Bool("skipNodeCheck", false, "Used only for testing local code development. Do not use in production.")
+	nodeAddr             = flag.String("nodeAddr", "127.0.0.1", "aerospike node")
 	namespaceSets        = flag.String("namespaceSets", "", "namespace:set comma delimited. Ex: 'myns:myset,myns2:myset3,myns3:,myns4:'- set optional, but colon is not")
 	failOnClusterChange  = flag.Bool("failOnClusterChange", false, "should we abort the scan on cluster change?")
 	reportCount          = flag.Int("reportCount", 300000, "How many records should be report on? Every <x> records will cause an entry in the stdout")
@@ -91,6 +92,7 @@ func init() {
 		"-exportType":           *exportType,
 		"-exportTypeDivision":   *exportTypeDivision,
 		"-exportBucketMultiply": *exportBucketMultiply,
+		"-skipNodeCheck:":       *skipNodeCheck,
 	}).Info("Showing passable parameters and their current values.")
 
 	if *namespaceSets == "" {

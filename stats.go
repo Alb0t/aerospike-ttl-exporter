@@ -70,6 +70,9 @@ func getLocalNode() *as.Node {
 	log.Debug("Fetching membership list..")
 	nodes := client.GetNodes()
 	log.Debug("Looping through active cluster nodes")
+	if *skipNodeCheck {
+		return nodes[0]
+	}
 	for _, node := range nodes {
 		// convert the node to a string, then split that to find the addr
 
@@ -169,8 +172,12 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 	var minBucket uint32
 	for key := range resultMap[namespaceSet] {
 		skey := fmt.Sprint(key)
-		if minBucket == 0 || (key < minBucket && resultMap[namespaceSet][key] > 0) {
+		log.Debug("Checking to see if ", key, " should be our minBucket.")
+		if minBucket == 0 || (key < minBucket && key > 0) {
 			minBucket = key
+			log.Debug("Setting minBucket to ", key)
+		} else {
+			log.Debug("minBucket is not ", key)
 		}
 		if *exportPercentages {
 			percentInThisBucket := float64(resultMap[namespaceSet][key]) * float64(100) / float64(total)
