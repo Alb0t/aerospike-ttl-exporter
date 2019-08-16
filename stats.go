@@ -170,14 +170,14 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 	}
 
 	var minBucket uint32
+	var notSet = true
 	for key := range resultMap[namespaceSet] {
 		skey := fmt.Sprint(key)
 		log.Debug("Checking to see if ", key, " should be our minBucket.")
-		if minBucket == 0 || (key < minBucket && resultMap[namespaceSet][key] > 0) {
+		if notSet || (key < minBucket && resultMap[namespaceSet][key] > 0) {
 			minBucket = key
 			log.Debug("Setting minBucket to ", key)
-		} else {
-			log.Debug("minBucket is not ", key)
+			notSet = false
 		}
 		if *exportPercentages {
 			percentInThisBucket := float64(resultMap[namespaceSet][key]) * float64(100) / float64(total)
