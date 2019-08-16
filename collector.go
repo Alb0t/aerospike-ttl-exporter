@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+var buildVersion = "0.1.18"
+
 var (
 	listenPort           = flag.String("listenPort", ":9634", "listen address for prometheus")
 	skipNodeCheck        = flag.Bool("skipNodeCheck", false, "Used only for testing local code development. Do not use in production.")
@@ -30,6 +32,14 @@ var (
 
 var expirationTTLCounts *prometheus.GaugeVec
 var expirationTTLPercents *prometheus.GaugeVec
+
+var buildInfo = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Name: "aerospike_ttl_build_info",
+		Help: "Build info",
+	},
+	[]string{"version"},
+)
 
 // these are global because im lazy
 var running = false                             // bool to track whether a scan is running already or not.
@@ -65,6 +75,8 @@ func init() {
 		},
 		[]string{*exportType, "namespace", "set"},
 	)
+	prometheus.MustRegister(buildInfo)
+	buildInfo.WithLabelValues(buildVersion).Set(1)
 
 	if *exportPercentages {
 		prometheus.MustRegister(expirationTTLPercents)
