@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-var buildVersion = "0.1.23"
+var buildVersion = "0.1.24"
 
 var (
 	listenPort           = flag.String("listenPort", ":9634", "listen address for prometheus")
