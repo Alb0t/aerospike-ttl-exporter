@@ -28,6 +28,8 @@ var (
 	exportType           = flag.String("exportType", "days", "What label should we give the bucket")
 	exportTypeDivision   = flag.Int("exportTypeDivision", 86400, "What should we divide by the seconds to get the bucket size?")
 	exportBucketMultiply = flag.Int("exportBucketMultiply", 1, "Multiply the bucket value by this before exporting")
+	minPercent           = flag.Float64("minPercent", 0.00001, "Minimum percentage which bucket must be considered for minBucket. Set to 100 to only use minCount.")
+	minCount             = flag.Int("minCount", 50, "Minimum count which bucket must have to be considered for minBucket. Set to 0 to only use minPercent.")
 )
 
 var expirationTTLCounts *prometheus.GaugeVec
@@ -105,6 +107,8 @@ func init() {
 		"-exportTypeDivision":   *exportTypeDivision,
 		"-exportBucketMultiply": *exportBucketMultiply,
 		"-skipNodeCheck:":       *skipNodeCheck,
+		"-minPercent":           *minPercent,
+		"-minCount":             *minCount,
 	}).Info("Showing passable parameters and their current values.")
 
 	if *namespaceSets == "" {

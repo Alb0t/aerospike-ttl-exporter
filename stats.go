@@ -174,13 +174,18 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 	for key := range resultMap[namespaceSet] {
 		skey := fmt.Sprint(key)
 		log.Debug("Checking to see if ", key, " should be our minBucket.")
+		percentInThisBucket := float64(resultMap[namespaceSet][key]) * float64(100) / float64(total)
 		if notSet || (key < minBucket && resultMap[namespaceSet][key] > 0) {
-			minBucket = key
-			log.Debug("Setting minBucket to ", key)
-			notSet = false
+			// check if it meets the provided thresholds for minBucket
+			if resultMap[namespaceSet][key] > *minCount && percentInThisBucket > *minPercent {
+				minBucket = key
+				log.Debug("Setting minBucket to ", key)
+				notSet = false
+			} else {
+				log.Debug("minBucket not set for", key, " it is not greater than both minPercent:", *minPercent, " and minCount:", *minCount, ". Found percent:", percentInThisBucket, " and count:", resultMap[namespaceSet][key])
+			}
 		}
 		if *exportPercentages {
-			percentInThisBucket := float64(resultMap[namespaceSet][key]) * float64(100) / float64(total)
 			expirationTTLPercents.WithLabelValues(skey, namespace, set).Set(float64(percentInThisBucket))
 		}
 		if *exportRecordCount {

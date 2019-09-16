@@ -133,11 +133,15 @@ Usage of ./aerospike-ttl-exporter:
     	should we abort the scan on cluster change?
   -frequencySecs int
     	how often to run the scan to report data (seconds)? (default 300)
-  -listen string
+  -listenPort string
     	listen address for prometheus (default ":9634")
+  -minCount int
+    	Minimum count which bucket must have to be considered for minBucket. Set to 0 to only use minPercent. (default 50)
+  -minPercent float
+    	Minimum percentage which bucket must be considered for minBucket. Set to 100 to only use minCount. (default 1e-05)
   -namespaceSets string
     	namespace:set comma delimited. Ex: 'myns:myset,myns2:myset3,myns3:,myns4:'- set optional, but colon is not
-  -node string
+  -nodeAddr string
     	aerospike node (default "127.0.0.1")
   -recordCount int
     	How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less. Pass '-recordCount=-1' to only use scanPercent. (default 3000000)
@@ -147,10 +151,13 @@ Usage of ./aerospike-ttl-exporter:
     	How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
   -scanPercent int
     	What percentage of data to scan? Will stop at recordCount or scanPercent, whichever is less. (default 1)
+  -skipNodeCheck
+    	Used only for testing local code development. Do not use in production.
   -verbose
-    	Print more stuff.
-      
+    	Print more stuff.      
 ```
+
+minPercent/minCount was added to prevent exporting minBucket with a very low value if only a single, or few small percentage, of records are present with that TTL. It uses both parameters together by default (if count>minCount AND pct>minPercet) but you can override this behavior by setting count=0 or percent=100 respectively.
 
 
 These options can be used to configure smaller/larger buckets:
