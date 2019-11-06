@@ -2,14 +2,17 @@ package main
 
 import (
 	"fmt"
-	as "github.com/aerospike/aerospike-client-go"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"strings"
+	"time"
+
+	as "github.com/aerospike/aerospike-client-go"
+	log "github.com/sirupsen/logrus"
 )
 
 var client *as.Client
 var scanpol *as.ScanPolicy
+var policy = as.NewPolicy()
 var err error
 
 func findLocalIps() error {
@@ -56,11 +59,15 @@ func aeroInit() error {
 	log.Info("Connected:", client.IsConnected())
 	scanpol = as.NewScanPolicy()
 	scanpol.ConcurrentNodes = false
-	scanpol.Priority = as.LOW
+	scanpol.Priority = as.HIGH
 	scanpol.ScanPercent = *scanPercent
 	scanpol.IncludeBinData = false
 	scanpol.FailOnClusterChange = *failOnClusterChange
 	scanpol.RecordQueueSize = *recordQueueSize
+	// scanpol.TotalTimeout = 2 * time.Minute
+	// scanpol.SocketTimeout = 2 * time.Minute
+	// policy.TotalTimeout = 2 * time.Minute
+	// policy.SocketTimeout = 2 * time.Minute
 	return nil
 }
 
@@ -161,6 +168,8 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 			}
 		} else {
 			log.Error("Error while inspecting scan results: ", rec.Err)
+			log.Warn("Sleeping 140s since we hit an error to allow any pending scan to clear out.")
+			time.Sleep(140 * time.Second)
 		}
 		if *recordCount != -1 && total >= *recordCount {
 			log.Debug("Retrieved ", total, " records. Which is >= the limit specified of ", *recordCount, ". Will terminate query now.")
