@@ -2,14 +2,15 @@ package main
 
 import (
 	"flag"
+	"os"
+	"strings"
+
 	"github.com/carlescere/scheduler"
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
-	"os"
-	"strings"
 )
 
-var buildVersion = "0.1.25"
+var buildVersion = "0.1.28"
 
 var (
 	listenPort           = flag.String("listenPort", ":9634", "listen address for prometheus")
