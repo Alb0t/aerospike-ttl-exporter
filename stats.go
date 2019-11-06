@@ -64,10 +64,10 @@ func aeroInit() error {
 	scanpol.IncludeBinData = false
 	scanpol.FailOnClusterChange = *failOnClusterChange
 	scanpol.RecordQueueSize = *recordQueueSize
-	// scanpol.TotalTimeout = 2 * time.Minute
-	// scanpol.SocketTimeout = 2 * time.Minute
-	// policy.TotalTimeout = 2 * time.Minute
-	// policy.SocketTimeout = 2 * time.Minute
+	scanpol.TotalTimeout = 20 * time.Minute
+	scanpol.SocketTimeout = 20 * time.Minute
+	policy.TotalTimeout = 20 * time.Minute
+	policy.SocketTimeout = 20 * time.Minute
 	return nil
 }
 
