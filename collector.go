@@ -10,7 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var buildVersion = "0.1.28"
+var buildVersion = "0.1.29"
 
 var (
 	listenPort           = flag.String("listenPort", ":9634", "listen address for prometheus")
