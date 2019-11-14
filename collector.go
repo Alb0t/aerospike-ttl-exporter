@@ -36,7 +36,7 @@ var scanTimes = prometheus.NewGaugeVec(
 var scanLastUpdated = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
 		Name: "aerospike_ttl_scan_last_updated",
-		Help: "Epoch scan last finished.",
+		Help: "Epoch time that scan last finished.",
 	},
 	[]string{"namespace", "set"},
 )
