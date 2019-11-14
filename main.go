@@ -10,6 +10,6 @@ func main() {
 	//This section will start the HTTP server and expose
 	//any metrics on the /metrics endpoint.
 	http.Handle("/metrics", promhttp.Handler())
-	log.Info("Opening port", *listenPort)
-	log.Fatal(http.ListenAndServe(*listenPort, nil))
+	log.Info("Opening port", config.Service.ListenPort)
+	log.Fatal(http.ListenAndServe(config.Service.ListenPort, nil))
 }
