@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+
 	"strings"
 	"time"
 
@@ -49,8 +50,8 @@ func findLocalIps() error {
 
 func aeroInit() error {
 	//function to define policies and connect to aerospike.
-	log.Info("Connecting to ", *nodeAddr, "...")
-	client, err = as.NewClient(*nodeAddr, 3000)
+	log.Info("Connecting to ", config.Service.NodeAddr, "...")
+	client, err = as.NewClient(config.Service.NodeAddr, 3000)
 
 	if err != nil || !client.IsConnected() {
 		log.Error("Exception while establishing connection:", err)
@@ -59,15 +60,8 @@ func aeroInit() error {
 	log.Info("Connected:", client.IsConnected())
 	scanpol = as.NewScanPolicy()
 	scanpol.ConcurrentNodes = false
-	scanpol.Priority = as.HIGH
-	scanpol.ScanPercent = *scanPercent
 	scanpol.IncludeBinData = false
-	scanpol.FailOnClusterChange = *failOnClusterChange
-	scanpol.RecordQueueSize = *recordQueueSize
-	scanpol.TotalTimeout = 20 * time.Minute
-	scanpol.SocketTimeout = 20 * time.Minute
-	policy.TotalTimeout = 20 * time.Minute
-	policy.SocketTimeout = 20 * time.Minute
+	scanpol.FailOnClusterChange = config.Service.FailOnClusterChange
 	return nil
 }
 
@@ -77,7 +71,7 @@ func getLocalNode() *as.Node {
 	log.Debug("Fetching membership list..")
 	nodes := client.GetNodes()
 	log.Debug("Looping through active cluster nodes")
-	if *skipNodeCheck {
+	if config.Service.SkipNodeCheck {
 		return nodes[0]
 	}
 	for _, node := range nodes {
@@ -102,28 +96,27 @@ func getLocalNode() *as.Node {
 }
 
 func runner() {
-	log.Debug("Namespace Sets Map:", namespaceSetsMap)
-	for ns := range namespaceSetsMap {
+	log.Debug("Printing namespaces to monitor and their config below.")
+	for _, x := range config.Monitor {
+		log.Debugf("%+v", x)
+	}
+	for _, element := range config.Monitor {
 		// if for some reason the scheduler calls us concurrently, just skip the new runs until the existing one is done
 		// probably just paranoia.
 		if running {
 			log.Warn("Already running. Skipping.")
 		}
 		running = true
-		namespaceSet := strings.Split(ns, ":")
-		var namespace, set string
-		if len(namespaceSet) == 1 {
-			namespace = namespaceSet[0]
-			set = ""
-		} else if len(namespaceSet) == 2 {
-			namespace = namespaceSet[0]
-			set = namespaceSet[1]
-		} else {
-			log.Fatal("Couldn't parse format of ", ns)
-		}
 		// while I am splitting namespace and set for aerospike calls and metric display,
 		// the metrics are stored in a map so preserving the original "ns" var
-		err := updateStats(namespace, set, ns)
+		startTime := float64(time.Now().Unix())
+		err := updateStats(element.Namespace, element.Set, element.Namespace+":"+element.Set, element)
+		finishTime := float64(time.Now().Unix())
+		timeToUpdate := float64((finishTime - startTime) / 60)
+		log.Info("Scan for ", element.Namespace, ":", element.Set, " took ", timeToUpdate, " minutes.")
+		scanTimes.WithLabelValues(element.Namespace, element.Set).Set(timeToUpdate)
+		scanLastUpdated.WithLabelValues(element.Namespace, element.Set).Set(finishTime)
+
 		if err != "" {
 			log.Error("There was a problem updating the stats.", err)
 		}
@@ -131,7 +124,16 @@ func runner() {
 	}
 }
 
-func updateStats(namespace string, set string, namespaceSet string) string {
+// simple function to take a human duration input like 1m20s and return a time.Duration output
+func parseDur(dur string) time.Duration {
+	parsedDur, err := time.ParseDuration(dur)
+	if err != nil {
+		panic(err)
+	}
+	return parsedDur
+}
+
+func updateStats(namespace string, set string, namespaceSet string, element monconf) string {
 	log.Debug("Running:", running)
 	if client == nil || client.IsConnected() == false {
 		err := aeroInit()
@@ -147,12 +149,20 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 		"namespace": namespace,
 		"set":       set,
 	}).Info("Begin scan/inspection.")
+	scanpol.ScanPercent = element.ScanPercent
+	scanpol.Priority = element.ScanPriority
+	scanpol.TotalTimeout = parseDur(element.ScanTotalTimeout)
+	scanpol.SocketTimeout = parseDur(element.ScanSocketTimeout)
+	policy.TotalTimeout = parseDur(element.PolicyTotalTimeout)
+	policy.SocketTimeout = parseDur(element.PolicySocketTimeout)
+
 	recs, _ := client.ScanNode(scanpol, localNode, namespace, set)
 	total := 0
 	totalInspected := 0
+	resultMap[namespaceSet] = make(map[uint32]int)
 	for rec := range recs.Results() {
-		if *verbose {
-			if total%*reportCount == 0 {
+		if config.Service.Verbose {
+			if total%element.ReportCount == 0 {
 				log.Info("Processed ", total, " records...")
 			}
 		}
@@ -163,7 +173,7 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 				// too noisy
 			} else {
 				total++
-				expireTime := (rec.Record.Expiration / uint32(*exportTypeDivision)) * uint32(*exportBucketMultiply)
+				expireTime := (rec.Record.Expiration / element.ExportTypeDivision) * element.ExportBucketMultiply
 				resultMap[namespaceSet][expireTime]++
 			}
 		} else {
@@ -171,59 +181,61 @@ func updateStats(namespace string, set string, namespaceSet string) string {
 			log.Warn("Sleeping 140s since we hit an error to allow any pending scan to clear out.")
 			time.Sleep(140 * time.Second)
 		}
-		if *recordCount != -1 && total >= *recordCount {
-			log.Debug("Retrieved ", total, " records. Which is >= the limit specified of ", *recordCount, ". Will terminate query now.")
+		if element.Recordcount != -1 && total >= element.Recordcount {
+			log.Debug("Retrieved ", total, " records. Which is >= the limit specified of ", element.Recordcount, ". Will terminate query now.")
 			recs.Close() // close the record set to stop the query
 			break
 		}
 	}
 
 	var minBucket uint32
-	var notSet = true
+	var minBucketNotSet = true
 	for key := range resultMap[namespaceSet] {
 		skey := fmt.Sprint(key)
 		log.Debug("Checking to see if ", key, " should be our minBucket.")
 		percentInThisBucket := float64(resultMap[namespaceSet][key]) * float64(100) / float64(total)
-		if notSet || (key < minBucket && resultMap[namespaceSet][key] > 0) {
+		if minBucketNotSet || (key < minBucket && resultMap[namespaceSet][key] > 0) {
 			// check if it meets the provided thresholds for minBucket
-			if resultMap[namespaceSet][key] > *minCount && percentInThisBucket > *minPercent {
+			if resultMap[namespaceSet][key] > element.MinCount && percentInThisBucket > element.MinPercent {
 				minBucket = key
 				log.Debug("Setting minBucket to ", key)
-				notSet = false
+				minBucketNotSet = false
 			} else {
-				log.Debug("minBucket not set for", key, " it is not greater than both minPercent:", *minPercent, " and minCount:", *minCount, ". Found percent:", percentInThisBucket, " and count:", resultMap[namespaceSet][key])
+				log.Debug("minBucket not set for ", key, " ttl -  it is not greater than both minPercent:", element.MinPercent, " and minCount:", element.MinCount, ". Found percent:", percentInThisBucket, " and count:", resultMap[namespaceSet][key])
 			}
 		}
-		if *exportPercentages {
-			expirationTTLPercents.WithLabelValues(skey, namespace, set).Set(float64(percentInThisBucket))
+		if element.ExportPercentages {
+			//"exportTypeCount", "exportType", "namespace", "set"},
+			expirationTTLPercents.WithLabelValues(element.ExportType, skey, namespace, set).Set(float64(percentInThisBucket))
 		}
-		if *exportRecordCount {
-			expirationTTLCounts.WithLabelValues(skey, namespace, set).Set(float64(resultMap[namespaceSet][key]))
+		if element.ExportRecordCount {
+			expirationTTLCounts.WithLabelValues(element.ExportType, skey, namespace, set).Set(float64(resultMap[namespaceSet][key]))
 		}
 		resultMap[namespaceSet][key] = 0 //zero back out the result in case this key goes away, report 0.
 	}
-
-	if *exportPercentages {
-		expirationTTLPercents.WithLabelValues("total", namespace, set).Set(float64(total))
+	if config.Service.Verbose {
+		log.Debug("minbucket not set:", minBucketNotSet)
 	}
-	if *exportRecordCount {
-		expirationTTLCounts.WithLabelValues("total", namespace, set).Set(float64(total))
+	if element.ExportPercentages {
+		expirationTTLPercents.WithLabelValues("totalScanned", "total", namespace, set).Set(float64(total))
 	}
-
+	if element.ExportRecordCount {
+		expirationTTLCounts.WithLabelValues("totalScanned", "total", namespace, set).Set(float64(total))
+	}
 	// if no records were scanned, then do not report a minBucket.
-	if total > 0 {
-		if *exportPercentages {
-			expirationTTLPercents.WithLabelValues("minBucket", namespace, set).Set(float64(minBucket))
+	if total > 0 && minBucketNotSet == false {
+		if element.ExportPercentages {
+			expirationTTLPercents.WithLabelValues(element.ExportType, "minBucket", namespace, set).Set(float64(minBucket))
 		}
-		if *exportRecordCount {
-			expirationTTLCounts.WithLabelValues("minBucket", namespace, set).Set(float64(minBucket))
+		if element.ExportRecordCount {
+			expirationTTLCounts.WithLabelValues(element.ExportType, "minBucket", namespace, set).Set(float64(minBucket))
 		}
 	} else {
-		if *exportPercentages {
-			expirationTTLPercents.DeleteLabelValues("minBucket", namespace, set)
+		if element.ExportPercentages {
+			expirationTTLPercents.DeleteLabelValues(element.ExportType, "minBucket", namespace, set)
 		}
-		if *exportRecordCount {
-			expirationTTLCounts.DeleteLabelValues("minBucket", namespace, set)
+		if element.ExportRecordCount {
+			expirationTTLCounts.DeleteLabelValues(element.ExportType, "minBucket", namespace, set)
 		}
 	}
 	log.WithFields(log.Fields{

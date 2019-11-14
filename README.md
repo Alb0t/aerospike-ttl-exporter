@@ -15,163 +15,59 @@ The data currently exported by Aerospike histogram dumps is not accurate enough 
 
 Example output:
 ```
-# HELP aerospike_ttl_counts Days in which this many records will expire. Sampled locally. Shows counts of how many records were found in each bucket.
-# TYPE aerospike_ttl_counts gauge
-aerospike_ttl_counts{days="159",namespace="mynamespace",set=""} 481
-aerospike_ttl_counts{days="160",namespace="mynamespace",set=""} 2293
-aerospike_ttl_counts{days="161",namespace="mynamespace",set=""} 5424
-aerospike_ttl_counts{days="162",namespace="mynamespace",set=""} 4384
-aerospike_ttl_counts{days="163",namespace="mynamespace",set=""} 4030
-aerospike_ttl_counts{days="164",namespace="mynamespace",set=""} 5390
-aerospike_ttl_counts{days="165",namespace="mynamespace",set=""} 4681
-aerospike_ttl_counts{days="166",namespace="mynamespace",set=""} 6249
-aerospike_ttl_counts{days="167",namespace="mynamespace",set=""} 4436
-aerospike_ttl_counts{days="168",namespace="mynamespace",set=""} 5034
-aerospike_ttl_counts{days="169",namespace="mynamespace",set=""} 3470
-aerospike_ttl_counts{days="170",namespace="mynamespace",set=""} 6954
-aerospike_ttl_counts{days="171",namespace="mynamespace",set=""} 1030
-aerospike_ttl_counts{days="172",namespace="mynamespace",set=""} 264
-aerospike_ttl_counts{days="173",namespace="mynamespace",set=""} 308
-aerospike_ttl_counts{days="174",namespace="mynamespace",set=""} 284
-aerospike_ttl_counts{days="175",namespace="mynamespace",set=""} 483
-aerospike_ttl_counts{days="176",namespace="mynamespace",set=""} 321
-aerospike_ttl_counts{days="177",namespace="mynamespace",set=""} 287
-aerospike_ttl_counts{days="178",namespace="mynamespace",set=""} 368
-aerospike_ttl_counts{days="179",namespace="mynamespace",set=""} 249
-aerospike_ttl_counts{days="180",namespace="mynamespace",set=""} 215
-aerospike_ttl_counts{days="181",namespace="mynamespace",set=""} 369
-aerospike_ttl_counts{days="182",namespace="mynamespace",set=""} 340
-aerospike_ttl_counts{days="183",namespace="mynamespace",set=""} 384
-aerospike_ttl_counts{days="184",namespace="mynamespace",set=""} 537
-aerospike_ttl_counts{days="185",namespace="mynamespace",set=""} 341
-aerospike_ttl_counts{days="186",namespace="mynamespace",set=""} 301
-aerospike_ttl_counts{days="187",namespace="mynamespace",set=""} 418
-aerospike_ttl_counts{days="188",namespace="mynamespace",set=""} 348
-aerospike_ttl_counts{days="189",namespace="mynamespace",set=""} 427
-aerospike_ttl_counts{days="190",namespace="mynamespace",set=""} 296
-aerospike_ttl_counts{days="191",namespace="mynamespace",set=""} 498
-aerospike_ttl_counts{days="192",namespace="mynamespace",set=""} 443
-aerospike_ttl_counts{days="193",namespace="mynamespace",set=""} 379
-aerospike_ttl_counts{days="194",namespace="mynamespace",set=""} 390
-aerospike_ttl_counts{days="195",namespace="mynamespace",set=""} 485
-aerospike_ttl_counts{days="196",namespace="mynamespace",set=""} 559
-aerospike_ttl_counts{days="197",namespace="mynamespace",set=""} 631
-aerospike_ttl_counts{days="198",namespace="mynamespace",set=""} 683
-aerospike_ttl_counts{days="199",namespace="mynamespace",set=""} 967
-aerospike_ttl_counts{days="200",namespace="mynamespace",set=""} 3320
-aerospike_ttl_counts{days="201",namespace="mynamespace",set=""} 2034
-aerospike_ttl_counts{days="minBucket",namespace="mynamespace",set=""} 159
-aerospike_ttl_counts{days="total",namespace="mynamespace",set=""} 70785
-# HELP aerospike_ttl_percents Days in which this many records will expire. Sampled locally. Shows percentages of how many records were found in each bucket vs total records scanned.
-# TYPE aerospike_ttl_percents gauge
-aerospike_ttl_percents{days="159",namespace="mynamespace",set=""} 0.6795224977043158
-aerospike_ttl_percents{days="160",namespace="mynamespace",set=""} 3.239386875750512
-aerospike_ttl_percents{days="161",namespace="mynamespace",set=""} 7.6626403899131175
-aerospike_ttl_percents{days="162",namespace="mynamespace",set=""} 6.193402557038921
-aerospike_ttl_percents{days="163",namespace="mynamespace",set=""} 5.693296602387512
-aerospike_ttl_percents{days="164",namespace="mynamespace",set=""} 7.614607614607615
-aerospike_ttl_percents{days="165",namespace="mynamespace",set=""} 6.612982976619341
-aerospike_ttl_percents{days="166",namespace="mynamespace",set=""} 8.828141555414282
-aerospike_ttl_percents{days="167",namespace="mynamespace",set=""} 6.266864448682631
-aerospike_ttl_percents{days="168",namespace="mynamespace",set=""} 7.1116762025852935
-aerospike_ttl_percents{days="169",namespace="mynamespace",set=""} 4.902168538532175
-aerospike_ttl_percents{days="170",namespace="mynamespace",set=""} 9.824115278660733
-aerospike_ttl_percents{days="171",namespace="mynamespace",set=""} 1.455110546019637
-aerospike_ttl_percents{days="172",namespace="mynamespace",set=""} 0.372960372960373
-aerospike_ttl_percents{days="173",namespace="mynamespace",set=""} 0.43512043512043513
-aerospike_ttl_percents{days="174",namespace="mynamespace",set=""} 0.40121494666949215
-aerospike_ttl_percents{days="175",namespace="mynamespace",set=""} 0.6823479550752278
-aerospike_ttl_percents{days="176",namespace="mynamespace",set=""} 0.4534859080313626
-aerospike_ttl_percents{days="177",namespace="mynamespace",set=""} 0.40545313272586
-aerospike_ttl_percents{days="178",namespace="mynamespace",set=""} 0.5198841562477926
-aerospike_ttl_percents{days="179",namespace="mynamespace",set=""} 0.3517694426785336
-aerospike_ttl_percents{days="180",namespace="mynamespace",set=""} 0.303736667373031
-aerospike_ttl_percents{days="181",namespace="mynamespace",set=""} 0.5212968849332485
-aerospike_ttl_percents{days="182",namespace="mynamespace",set=""} 0.4803277530550258
-aerospike_ttl_percents{days="183",namespace="mynamespace",set=""} 0.5424878152150879
-aerospike_ttl_percents{days="184",namespace="mynamespace",set=""} 0.7586353040898496
-aerospike_ttl_percents{days="185",namespace="mynamespace",set=""} 0.48174048174048173
-aerospike_ttl_percents{days="186",namespace="mynamespace",set=""} 0.4252313343222434
-aerospike_ttl_percents{days="187",namespace="mynamespace",set=""} 0.5905205905205905
-aerospike_ttl_percents{days="188",namespace="mynamespace",set=""} 0.49162958253867345
-aerospike_ttl_percents{days="189",namespace="mynamespace",set=""} 0.6032351486896942
-aerospike_ttl_percents{days="190",namespace="mynamespace",set=""} 0.41816769089496364
-aerospike_ttl_percents{days="191",namespace="mynamespace",set=""} 0.7035388853570672
-aerospike_ttl_percents{days="192",namespace="mynamespace",set=""} 0.6258388076569895
-aerospike_ttl_percents{days="193",namespace="mynamespace",set=""} 0.5354241717878081
-aerospike_ttl_percents{days="194",namespace="mynamespace",set=""} 0.5509641873278237
-aerospike_ttl_percents{days="195",namespace="mynamespace",set=""} 0.6851734124461397
-aerospike_ttl_percents{days="196",namespace="mynamespace",set=""} 0.7897153351698806
-aerospike_ttl_percents{days="197",namespace="mynamespace",set=""} 0.8914318005227096
-aerospike_ttl_percents{days="198",namespace="mynamespace",set=""} 0.9648936921664194
-aerospike_ttl_percents{days="199",namespace="mynamespace",set=""} 1.3661086388359116
-aerospike_ttl_percents{days="200",namespace="mynamespace",set=""} 4.690259235713781
-aerospike_ttl_percents{days="201",namespace="mynamespace",set=""} 2.873490146217419
-aerospike_ttl_percents{days="minBucket",namespace="mynamespace",set=""} 159
-aerospike_ttl_percents{days="total",namespace="mynamespace",set=""} 70785
+
 ```
 
 # To use:
-Grab a release from https://github.com/Alb0t/aerospike-ttl-exporter/releases .
-Extract and run the binary, or create a systemd service file with options.
+1) Grab a release from https://github.com/Alb0t/aerospike-ttl-exporter/releases
+2) Extract and create a config file
+3) Run the binary pointing to the config file, or create a systemd service file.
 
 
 # Usage/params:
 ```
 Usage of ./aerospike-ttl-exporter:
-  -exportBucketMultiply int
-    	Multiply the bucket value by this before exporting (default 1)
-  -exportPercentages
-    	Export percentage distribution per bucket out of total. (default true)
-  -exportRecordCount
-    	Export record count per bucket.
-  -exportType string
-    	What label should we give the bucket (default "days")
-  -exportTypeDivision int
-    	What should we divide by the seconds to get the bucket size? (default 86400)
-  -failOnClusterChange
-    	should we abort the scan on cluster change?
-  -frequencySecs int
-    	how often to run the scan to report data (seconds)? (default 300)
-  -listenPort string
-    	listen address for prometheus (default ":9634")
-  -minCount int
-    	Minimum count which bucket must have to be considered for minBucket. Set to 0 to only use minPercent. (default 50)
-  -minPercent float
-    	Minimum percentage which bucket must be considered for minBucket. Set to 100 to only use minCount. (default 1e-05)
-  -namespaceSets string
-    	namespace:set comma delimited. Ex: 'myns:myset,myns2:myset3,myns3:,myns4:'- set optional, but colon is not
-  -nodeAddr string
-    	aerospike node (default "127.0.0.1")
-  -recordCount int
-    	How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less. Pass '-recordCount=-1' to only use scanPercent. (default 3000000)
-  -recordQueueSize int
-    	Number of records to place in queue before blocking. (default 50)
-  -reportCount int
-    	How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
-  -scanPercent int
-    	What percentage of data to scan? Will stop at recordCount or scanPercent, whichever is less. (default 1)
-  -skipNodeCheck
-    	Used only for testing local code development. Do not use in production.
-  -verbose
-    	Print more stuff.      
+  -configFile string
+    Path to the config file for the exporter. (Default: "/etc/ttl-aerospike-exporter.yaml")
+```
+## configFile
+The config file should be yaml and following a very strict pattern/layout. You can download the conf.yaml file in the repo and change it to suit your needs.
+There are _NO DEFAULT VALUES_ because of the way golang works with reading yaml. Any key/value omitted, or misspelled, will result in that value being set to the type's default. Ex. if scanPercent is omitted it will be set to 0. If set is omitted it will be set to "". Data types can be found in collector.go in the declared structs, and you can find the defaults in golang if you want. Basically, don't mispell anything or leave anything out.
+
+The program will print all its realized config values before each scan to stdout if running in debug mode.
+ex.
+
+```
+...
+DEBU[2019-11-14T11:51:42-07:00] Checking to see if 22 should be our minBucket.
+DEBU[2019-11-14T11:51:42-07:00] minbucket not set:false                      
+INFO[2019-11-14T11:51:42-07:00] Scan complete.                                namespace=myns set= total(records exported)=50000 totalInspected=50000
+INFO[2019-11-14T11:51:42-07:00] Scan for myns: took 0.2 minutes.          
+DEBU[2019-11-14T11:51:42-07:00] Printing namespaces to monitor and their config below.
+DEBU[2019-11-14T11:51:42-07:00] {Namespace:somens Set:User Recordcount:50000 ScanPercent:1 ExportPercentages:true ExportRecordCount:false ExportType:days ExportTypeDivision:86400 ExportBucketMultiply:1 MinPercent:1e-05 MinCount:50 ReportCount:300000 ScanPriority:1 ScanTotalTimeout:20m ScanSocketTimeout:20m PolicyTotalTimeout:20m PolicySocketTimeout:20m}
+DEBU[2019-11-14T11:51:42-07:00] Printing namespaces to monitor and their config below.
+DEBU[2019-11-14T11:51:42-07:00] {Namespace:myns Set: Recordcount:50000 ScanPercent:1 ExportPercentages:true ExportRecordCount:false ExportType:days ExportTypeDivision:86400 ExportBucketMultiply:1 MinPercent:1e-05 MinCount:50 ReportCount:300000 ScanPriority:1 ScanTotalTimeout:20m ScanSocketTimeout:20m PolicyTotalTimeout:20m PolicySocketTimeout:20m}
+...
 ```
 
+# Notes
 minPercent/minCount was added to prevent exporting minBucket with a very low value if only a single, or few small percentage, of records are present with that TTL. It uses both parameters together by default (if count>minCount AND pct>minPercet) but you can override this behavior by setting count=0 or percent=100 respectively.
 
 
 These options can be used to configure smaller/larger buckets:
 ```
-  -exportType string
-    	What label should we give the bucket (default "days")
-  -exportTypeDivision int
-    	What should we divide by the seconds to get the bucket size? (default 86400)
-  -exportBucketMultiply int
-      Multiply the bucket value by this before exporting (default 1)
+  exportType string
+    	What label should we give the bucket
+  exportTypeDivision int
+    	What should we divide by the seconds to get the bucket size?
+  exportBucketMultiply int
+      Multiply the bucket value by this before exporting
  ```
- 
+
  For example, if you wanted 15 minute buckets, you could pass these as:
  ```
-   -exportType=minutes -exportTypeDivision=900 -exportBucketMultiply=15 
+   exportType: minutes
+   exportTypeDivision: 900
+   exportBucketMultiply: 15
  ```
  This would export things in 15 minute buckets, and report them as 'minutes'

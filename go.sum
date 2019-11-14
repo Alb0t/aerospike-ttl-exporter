@@ -1,5 +1,7 @@
 github.com/aerospike/aerospike-client-go v2.4.0+incompatible h1:VEsRkcZDnSimTz6J4AasiMDjHdCH+g3EVLNdTfZYQdA=
 github.com/aerospike/aerospike-client-go v2.4.0+incompatible/go.mod h1:zj8LBEnWBDOVEIJt8LvaRvDG5ARAoa5dBeHaB472NRc=
+github.com/aerospike/aerospike-client-go v2.5.0+incompatible h1:g1LRioGO1ptJPKnHyrJtSf86sDD1nYVYhgf1eW8XxYw=
+github.com/aerospike/aerospike-client-go v2.5.0+incompatible/go.mod h1:zj8LBEnWBDOVEIJt8LvaRvDG5ARAoa5dBeHaB472NRc=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=
@@ -87,3 +89,5 @@ gopkg.in/alecthomas/kingpin.v2 v2.2.6/go.mod h1:FMv+mEhP44yOT+4EoQTLFTRgOQ1FBLks
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/yaml.v2 v2.2.1/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
 gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
+gopkg.in/yaml.v3 v3.0.0-20191107175235-0b070bb63a18 h1:VaaR1yHVgJQaTGM1DXum4OU6He6gaZXAPII85hHgSzQ=
+gopkg.in/yaml.v3 v3.0.0-20191107175235-0b070bb63a18/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
