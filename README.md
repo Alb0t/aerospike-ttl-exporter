@@ -90,7 +90,6 @@ aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl=
 aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="207"} 0.31
 aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="208"} 0.56
 aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="209"} 2.942
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="minBucket"} 140
 aerospike_ttl_percents{exportType="totalScanned",namespace="mynamespace",set="User",ttl="total"} 50000
 # HELP aerospike_ttl_scan_last_updated Epoch time that scan last finished.
 # TYPE aerospike_ttl_scan_last_updated gauge
@@ -122,20 +121,20 @@ ex.
 
 ```
 ...
-DEBU[2019-11-14T11:51:42-07:00] Checking to see if 22 should be our minBucket.
-DEBU[2019-11-14T11:51:42-07:00] minbucket not set:false                      
-INFO[2019-11-14T11:51:42-07:00] Scan complete.                                namespace=myns set= total(records exported)=50000 totalInspected=50000
-INFO[2019-11-14T11:51:42-07:00] Scan for myns: took 0.2 minutes.          
-DEBU[2019-11-14T11:51:42-07:00] Printing namespaces to monitor and their config below.
-DEBU[2019-11-14T11:51:42-07:00] {Namespace:somens Set:User Recordcount:50000 ScanPercent:1 ExportPercentages:true ExportRecordCount:false ExportType:days ExportTypeDivision:86400 ExportBucketMultiply:1 MinPercent:1e-05 MinCount:50 ReportCount:300000 ScanPriority:1 ScanTotalTimeout:20m ScanSocketTimeout:20m PolicyTotalTimeout:20m PolicySocketTimeout:20m}
-DEBU[2019-11-14T11:51:42-07:00] Printing namespaces to monitor and their config below.
-DEBU[2019-11-14T11:51:42-07:00] {Namespace:myns Set: Recordcount:50000 ScanPercent:1 ExportPercentages:true ExportRecordCount:false ExportType:days ExportTypeDivision:86400 ExportBucketMultiply:1 MinPercent:1e-05 MinCount:50 ReportCount:300000 ScanPriority:1 ScanTotalTimeout:20m ScanSocketTimeout:20m PolicyTotalTimeout:20m PolicySocketTimeout:20m}
+time="2021-03-23T15:16:09-06:00" level=debug msg="Printing namespaces to monitor and their config below."
+time="2021-03-23T15:16:09-06:00" level=debug msg="{Namespace:mynamespace Set:User Recordcount:-1 ScanPercent:1 ExportPercentages:true ExportRecordCount:false ExportType:days ExportTypeDivision:86400 ExportBucketMultiply:1 ReportCount:100 ScanPriority:1 ScanTotalTimeout:20m ScanSocketTimeout:20m PolicyTotalTimeout:20m PolicySocketTimeout:20m RecordsPerSecond:500}"
+time="2021-03-23T15:16:09-06:00" level=debug msg="Running:true"
+time="2021-03-23T15:16:09-06:00" level=debug msg="Finding local node."
+time="2021-03-23T15:16:09-06:00" level=debug msg="Fetching membership list.."
+time="2021-03-23T15:16:09-06:00" level=debug msg="Looping through active cluster nodes"
+time="2021-03-23T15:16:09-06:00" level=debug msg="Comparing against local ip list.."
+time="2021-03-23T15:16:09-06:00" level=debug msg="found node with matching localip 127.0.0.1==BB9020014AC4202 127.0.0.1:3000"
+time="2021-03-23T15:16:09-06:00" level=info msg="Begin scan/inspection." namespace=mynamespace set=User
+time="2021-03-23T15:16:09-06:00" level=debug msg="Setting max records to 100 based off sample percent 1"
 ...
 ```
 
 # Notes
-minPercent/minCount was added to prevent exporting minBucket with a very low value if only a single, or few small percentage, of records are present with that TTL. It uses both parameters together by default (if count>minCount AND pct>minPercet) but you can override this behavior by setting count=0 or percent=100 respectively.
-
 
 These options can be used to configure smaller/larger buckets:
 ```
