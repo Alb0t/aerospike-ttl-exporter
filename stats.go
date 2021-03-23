@@ -66,7 +66,7 @@ func aeroInit() error {
 	return nil
 }
 
-func countSetObjects(n *as.Node, ns, set string) (int64, error) {
+func countSetObjects(n *as.Node, ns, set string) int64 {
 	const statKey = "objects"
 	// get the list of cluster nodes
 	infop := as.NewInfoPolicy()
@@ -75,21 +75,21 @@ func countSetObjects(n *as.Node, ns, set string) (int64, error) {
 	cmd := fmt.Sprintf("sets/%s/%s", ns, set)
 	info, err := n.RequestInfo(infop, cmd)
 	if err != nil {
-		return -1, err
+		return -1
 	}
 	vals := strings.Split(info[cmd], ":")
 	for _, val := range vals {
 		if i := strings.Index(val, statKey); i > -1 {
 			cnt, err := strconv.Atoi(val[i+len(statKey)+1:])
 			if err != nil {
-				return -1, err
+				return -1
 			}
 			objCount += cnt
 			break
 		}
 	}
 
-	return int64(objCount), nil
+	return int64(objCount)
 }
 
 func getLocalNode() *as.Node {
@@ -185,12 +185,12 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	// Aerospike deprecated ScanPercent because they're evil
 	// so we'll do it ourselves.
 	// TODO: maybe add predexp digest mod match.
-	if element.ScanPercent != -1 {
-		if scanpol.MaxRecords == -1 {
-			scanpol.MaxRecords, _ = countSetObjects(localNode, namespace, set)
-		} else {
-			scanpol.MaxRecords = int64(element.Recordcount)
-		}
+	if element.ScanPercent > 0 && element.Recordcount == -1 {
+		sampleRecCount := countSetObjects(localNode, namespace, set) * int64(element.ScanPercent) / 100
+		scanpol.MaxRecords = sampleRecCount
+		log.Debug("Setting max records to ", sampleRecCount, " based off sample percent ", element.ScanPercent)
+	} else {
+		scanpol.MaxRecords = int64(element.Recordcount)
 	}
 	policy.TotalTimeout = parseDur(element.PolicyTotalTimeout)
 	policy.SocketTimeout = parseDur(element.PolicySocketTimeout)
@@ -201,7 +201,7 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	resultMap[namespaceSet] = make(map[uint32]int)
 	for rec := range recs.Results() {
 		if config.Service.Verbose {
-			if total%element.ReportCount == 0 {
+			if total%element.ReportCount == 0 { // this is after the scan is done. may not be valuable other than for debugging.
 				log.Info("Processed ", total, " records...")
 			}
 		}
@@ -227,56 +227,24 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 		}
 	}
 
-	var minBucket uint32
-	var minBucketNotSet = true
 	// There might be a better way to do this, but i'm adding a reset here to clear out any buckets that aren't valuable anymore.
 	expirationTTLPercents.Reset()
 	expirationTTLCounts.Reset()
 	for key := range resultMap[namespaceSet] {
-		skey := fmt.Sprint(key)
-		log.Debug("Checking to see if ", key, " should be our minBucket.")
-		percentInThisBucket := float64(resultMap[namespaceSet][key]) * float64(100) / float64(total)
-		if minBucketNotSet || (key < minBucket && resultMap[namespaceSet][key] > 0) {
-			// check if it meets the provided thresholds for minBucket
-			if resultMap[namespaceSet][key] > element.MinCount && percentInThisBucket > element.MinPercent {
-				minBucket = key
-				log.Debug("Setting minBucket to ", key)
-				minBucketNotSet = false
-			} else {
-				log.Debug("minBucket not set for ", key, " ttl -  it is not greater than both minPercent:", element.MinPercent, " and minCount:", element.MinCount, ". Found percent:", percentInThisBucket, " and count:", resultMap[namespaceSet][key])
-			}
-		}
+		skey := fmt.Sprint(key) // this will be used as a label like {ttl="100"} so needs to be string.
 		if element.ExportPercentages {
+			percentInThisBucket := float64(resultMap[namespaceSet][key]) * float64(100) / float64(total)
 			expirationTTLPercents.WithLabelValues(element.ExportType, skey, namespace, set).Set(float64(percentInThisBucket))
 		}
 		if element.ExportRecordCount {
 			expirationTTLCounts.WithLabelValues(element.ExportType, skey, namespace, set).Set(float64(resultMap[namespaceSet][key]))
 		}
 	}
-	if config.Service.Verbose {
-		log.Debug("minbucket not set:", minBucketNotSet)
-	}
 	if element.ExportPercentages {
 		expirationTTLPercents.WithLabelValues("totalScanned", "total", namespace, set).Set(float64(total))
 	}
 	if element.ExportRecordCount {
 		expirationTTLCounts.WithLabelValues("totalScanned", "total", namespace, set).Set(float64(total))
-	}
-	// if no records were scanned, then do not report a minBucket.
-	if total > 0 && minBucketNotSet == false {
-		if element.ExportPercentages {
-			expirationTTLPercents.WithLabelValues(element.ExportType, "minBucket", namespace, set).Set(float64(minBucket))
-		}
-		if element.ExportRecordCount {
-			expirationTTLCounts.WithLabelValues(element.ExportType, "minBucket", namespace, set).Set(float64(minBucket))
-		}
-	} else {
-		if element.ExportPercentages {
-			expirationTTLPercents.DeleteLabelValues(element.ExportType, "minBucket", namespace, set)
-		}
-		if element.ExportRecordCount {
-			expirationTTLCounts.DeleteLabelValues(element.ExportType, "minBucket", namespace, set)
-		}
 	}
 	log.WithFields(log.Fields{
 		"total(records exported)": total,

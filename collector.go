@@ -72,8 +72,6 @@ type monconf struct {
 	ExportType           string      `yaml:"exportType,omitempty"`
 	ExportTypeDivision   uint32      `yaml:"exportTypeDivision,omitempty"`
 	ExportBucketMultiply uint32      `yaml:"exportBucketMultiply,omitempty"`
-	MinPercent           float64     `yaml:"minPercent,omitempty"`
-	MinCount             int         `yaml:"minCount,omitempty"`
 	ReportCount          int         `yaml:"reportCount,omitempty"`
 	ScanPriority         as.Priority `yaml:"scanPriority"`
 	ScanTotalTimeout     string      `yaml:"scanTotalTimeout"`

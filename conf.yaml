@@ -10,15 +10,13 @@ service:
 monitor:
   - namespace: mynamespace
     set: User  # what setname to scan? use `null` (without ticks) to just report on a namespace level
-    recordCount: 50000  # How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less. Pass '-recordCount=-1' to only use scanPercent.
-    scanPercent: 1  # what percentage of data to scan? Will stop at recordCount or scanPercent, whichever is less.
+    recordCount: 50000  # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
+    scanPercent: 1  # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
     exportPercentages: true  # Export percentage distribution per bucket out of total.
     exportRecordCount: false  # Export record count per bucket.
     exportType: days  # after performing the exportTypeDivision/exportBucketMultiply how do we want to call this type? eg division=86400, bucketmultiply=1 == days
     exportTypeDivision: 86400  # What should we divide by the seconds to get the bucket size? 86400=1day
     exportBucketMultiply: 1  # Multiply the bucket value by this before exporting (default 1)
-    minPercent: 0.00001  # Minimum percentage which bucket must be considered for minBucket. Set to 100 to only use minCount. (default 1e-05)
-    minCount: 50  # Minimum count which bucket must have to be considered for minBucket. Set to 0 to only use minPercent. (default 50)
     reportCount: 300000  # if running verbose, How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
     scanPriority: 1  # 1=LOW, 2=MED, 3=HIGH
     scanTotalTimeout: 20m  # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
@@ -28,15 +26,13 @@ monitor:
     RecordsPerSecond: 0 # not sure if this works on older versions, but it does right now as of v5. 0 means no limit.
   - namespace: someothernamespace
     set: null  # what setname to scan? use `null` (without ticks) to just report on a namespace level
-    recordCount: -1  # How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less. Pass '-recordCount=-1' to only use scanPercent.
-    scanPercent: 1  # what percentage of data to scan? Will stop at recordCount or scanPercent, whichever is less.
+    recordCount: -1  # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
+    scanPercent: 1  # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
     exportPercentages: true  # Export percentage distribution per bucket out of total.
     exportRecordCount: false  # Export record count per bucket.
     exportType: days  # after performing the exportTypeDivision/exportBucketMultiply how do we want to call this type? eg division=86400, bucketmultiply=1 == days
     exportTypeDivision: 86400  # What should we divide by the seconds to get the bucket size? 86400=1day
     exportBucketMultiply: 1  # Multiply the bucket value by this before exporting (default 1)
-    minPercent: 0.00001  # Minimum percentage which bucket must be considered for minBucket. Set to 100 to only use minCount. (default 1e-05)
-    minCount: 50  # Minimum count which bucket must have to be considered for minBucket. Set to 0 to only use minPercent. (default 50)
     reportCount: 300000  # if running verbose, How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
     scanPriority: 1  # 1=LOW, 2=MED, 3=HIGH
     scanTotalTimeout: 20m  # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
