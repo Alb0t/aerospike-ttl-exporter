@@ -25,6 +25,7 @@ monitor:
     scanSocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     policyTotalTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     policySocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
+    RecordsPerSecond: 0 # not sure if this works on older versions, but it does right now as of v5. 0 means no limit.
   - namespace: someothernamespace
     set: null  # what setname to scan? use `null` (without ticks) to just report on a namespace level
     recordCount: -1  # How many records to stop scanning at? Will stop at recordCount or scanPercent, whichever is less. Pass '-recordCount=-1' to only use scanPercent.
@@ -42,3 +43,4 @@ monitor:
     scanSocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     policyTotalTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     policySocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
+    RecordsPerSecond: 100 # not sure if this works on older versions, but it does right now as of v5. 0 means no limit.
