@@ -11,7 +11,7 @@ monitor:
   - namespace: mynamespace
     set: User  # what setname to scan? use `null` (without ticks) to just report on a namespace level
     recordCount: 50000  # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
-    scanPercent: 1  # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
+    scanPercent: 1.1  # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
     exportPercentages: true  # Export percentage distribution per bucket out of total.
     exportRecordCount: false  # Export record count per bucket.
     exportType: days  # after performing the exportTypeDivision/exportBucketMultiply how do we want to call this type? eg division=86400, bucketmultiply=1 == days
@@ -27,7 +27,7 @@ monitor:
   - namespace: someothernamespace
     set: null  # what setname to scan? use `null` (without ticks) to just report on a namespace level
     recordCount: -1  # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
-    scanPercent: 1  # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
+    scanPercent: 1.0  # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
     exportPercentages: true  # Export percentage distribution per bucket out of total.
     exportRecordCount: false  # Export record count per bucket.
     exportType: days  # after performing the exportTypeDivision/exportBucketMultiply how do we want to call this type? eg division=86400, bucketmultiply=1 == days

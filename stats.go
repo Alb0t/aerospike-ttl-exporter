@@ -177,7 +177,7 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 		"namespace": namespace,
 		"set":       set,
 	}).Info("Begin scan/inspection.")
-	scanpol.ScanPercent = element.ScanPercent
+	//scanpol.ScanPercent = element.ScanPercent // deprecated
 	scanpol.Priority = element.ScanPriority
 	scanpol.TotalTimeout = parseDur(element.ScanTotalTimeout)
 	scanpol.SocketTimeout = parseDur(element.ScanSocketTimeout)
@@ -186,9 +186,12 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	// so we'll do it ourselves.
 	// TODO: maybe add predexp digest mod match.
 	if element.ScanPercent > 0 && element.Recordcount == -1 {
-		sampleRecCount := countSetObjects(localNode, namespace, set) * int64(element.ScanPercent) / 100
-		scanpol.MaxRecords = sampleRecCount
+		sampleRecCount := float64(countSetObjects(localNode, namespace, set)) * element.ScanPercent / 100
+		scanpol.MaxRecords = int64(sampleRecCount)
 		log.Debug("Setting max records to ", sampleRecCount, " based off sample percent ", element.ScanPercent)
+	} else if element.ScanPercent > 100 {
+		log.Warn("Setting max records to 0 to scan 100% of data, seems kinda silly so warnings you..")
+		scanpol.MaxRecords = 0
 	} else {
 		scanpol.MaxRecords = int64(element.Recordcount)
 	}
