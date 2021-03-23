@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"strconv"
 
 	"strings"
 	"time"
@@ -63,6 +64,32 @@ func aeroInit() error {
 	scanpol.IncludeBinData = false
 	scanpol.FailOnClusterChange = config.Service.FailOnClusterChange
 	return nil
+}
+
+func countSetObjects(n *as.Node, ns, set string) (int64, error) {
+	const statKey = "objects"
+	// get the list of cluster nodes
+	infop := as.NewInfoPolicy()
+	objCount := 0
+
+	cmd := fmt.Sprintf("sets/%s/%s", ns, set)
+	info, err := n.RequestInfo(infop, cmd)
+	if err != nil {
+		return -1, err
+	}
+	vals := strings.Split(info[cmd], ":")
+	for _, val := range vals {
+		if i := strings.Index(val, statKey); i > -1 {
+			cnt, err := strconv.Atoi(val[i+len(statKey)+1:])
+			if err != nil {
+				return -1, err
+			}
+			objCount += cnt
+			break
+		}
+	}
+
+	return int64(objCount), nil
 }
 
 func getLocalNode() *as.Node {
@@ -145,6 +172,7 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	if localNode == nil {
 		return "Did not find self in node list"
 	}
+
 	log.WithFields(log.Fields{
 		"namespace": namespace,
 		"set":       set,
@@ -153,6 +181,17 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	scanpol.Priority = element.ScanPriority
 	scanpol.TotalTimeout = parseDur(element.ScanTotalTimeout)
 	scanpol.SocketTimeout = parseDur(element.ScanSocketTimeout)
+	scanpol.RecordsPerSecond = element.RecordsPerSecond // this will default to 0 if its not passed. that means no throttle (ahhh!!)
+	// Aerospike deprecated ScanPercent because they're evil
+	// so we'll do it ourselves.
+	// TODO: maybe add predexp digest mod match.
+	if element.ScanPercent != -1 {
+		if scanpol.MaxRecords == -1 {
+			scanpol.MaxRecords, _ = countSetObjects(localNode, namespace, set)
+		} else {
+			scanpol.MaxRecords = int64(element.Recordcount)
+		}
+	}
 	policy.TotalTimeout = parseDur(element.PolicyTotalTimeout)
 	policy.SocketTimeout = parseDur(element.PolicySocketTimeout)
 
@@ -190,6 +229,10 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 
 	var minBucket uint32
 	var minBucketNotSet = true
+	// There might be a better way to do this, but i'm adding a reset here to clear out any buckets that aren't valuable anymore.
+	expirationTTLPercents.Reset()
+	expirationTTLCounts.Reset()
+	//keepSlice := make([]string, 0)
 	for key := range resultMap[namespaceSet] {
 		skey := fmt.Sprint(key)
 		log.Debug("Checking to see if ", key, " should be our minBucket.")
@@ -207,11 +250,13 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 		if element.ExportPercentages {
 			//"exportTypeCount", "exportType", "namespace", "set"},
 			expirationTTLPercents.WithLabelValues(element.ExportType, skey, namespace, set).Set(float64(percentInThisBucket))
+			//keepSlice = append(keepSlice, skey)
 		}
 		if element.ExportRecordCount {
 			expirationTTLCounts.WithLabelValues(element.ExportType, skey, namespace, set).Set(float64(resultMap[namespaceSet][key]))
+			//keepSlice = append(keepSlice, skey)
 		}
-		resultMap[namespaceSet][key] = 0 //zero back out the result in case this key goes away, report 0.
+		// Wont iterate over it if it doesnt exist dumbo // resultMap[namespaceSet][key] = 0 //zero back out the result in case this key goes away, report 0.
 	}
 	if config.Service.Verbose {
 		log.Debug("minbucket not set:", minBucketNotSet)

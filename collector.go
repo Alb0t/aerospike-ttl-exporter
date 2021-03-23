@@ -2,16 +2,17 @@ package main
 
 import (
 	"flag"
+	"io/ioutil"
+	"os"
+
 	as "github.com/aerospike/aerospike-client-go"
 	"github.com/carlescere/scheduler"
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
-	"io/ioutil"
-	"os"
 )
 
-var buildVersion = "0.2.0"
+var buildVersion = "0.2.4"
 var expirationTTLCounts *prometheus.GaugeVec
 var expirationTTLPercents *prometheus.GaugeVec
 
@@ -79,6 +80,7 @@ type monconf struct {
 	ScanSocketTimeout    string      `yaml:"scanSocketTimeout"`
 	PolicyTotalTimeout   string      `yaml:"policyTotalTimeout"`
 	PolicySocketTimeout  string      `yaml:"policySocketTimeout"`
+	RecordsPerSecond     int         `yaml:"recordsPerSecond"`
 }
 
 func (c *conf) getConf() *conf {
