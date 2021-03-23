@@ -232,7 +232,6 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	// There might be a better way to do this, but i'm adding a reset here to clear out any buckets that aren't valuable anymore.
 	expirationTTLPercents.Reset()
 	expirationTTLCounts.Reset()
-	//keepSlice := make([]string, 0)
 	for key := range resultMap[namespaceSet] {
 		skey := fmt.Sprint(key)
 		log.Debug("Checking to see if ", key, " should be our minBucket.")
@@ -248,15 +247,11 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 			}
 		}
 		if element.ExportPercentages {
-			//"exportTypeCount", "exportType", "namespace", "set"},
 			expirationTTLPercents.WithLabelValues(element.ExportType, skey, namespace, set).Set(float64(percentInThisBucket))
-			//keepSlice = append(keepSlice, skey)
 		}
 		if element.ExportRecordCount {
 			expirationTTLCounts.WithLabelValues(element.ExportType, skey, namespace, set).Set(float64(resultMap[namespaceSet][key]))
-			//keepSlice = append(keepSlice, skey)
 		}
-		// Wont iterate over it if it doesnt exist dumbo // resultMap[namespaceSet][key] = 0 //zero back out the result in case this key goes away, report 0.
 	}
 	if config.Service.Verbose {
 		log.Debug("minbucket not set:", minBucketNotSet)
