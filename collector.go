@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var buildVersion = "0.2.4"
+var buildVersion = "0.2.5"
 var expirationTTLCounts *prometheus.GaugeVec
 var expirationTTLPercents *prometheus.GaugeVec
 
