@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var buildVersion = "0.2.5"
+var buildVersion = "0.2.6"
 var expirationTTLCounts *prometheus.GaugeVec
 var expirationTTLPercents *prometheus.GaugeVec
 
@@ -66,7 +66,7 @@ type monconf struct {
 	Namespace            string      `yaml:"namespace"`
 	Set                  string      `yaml:"set"`
 	Recordcount          int         `yaml:"recordCount,omitempty"`
-	ScanPercent          int         `yaml:"scanPercent,omitempty"`
+	ScanPercent          float64     `yaml:"scanPercent,omitempty"`
 	ExportPercentages    bool        `yaml:"exportPercentages,omitempty"`
 	ExportRecordCount    bool        `yaml:"exportRecordCount,omitempty"`
 	ExportType           string      `yaml:"exportType,omitempty"`
