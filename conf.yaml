@@ -1,12 +1,12 @@
 ---
 service:
   listenPort: :9634  # which port the exporter binds on.
-  nodeAddr: 127.0.0.1  # for testing purposes, or if for some reason this isnt localhost, what ip do we connect to for aerospike?
+  aerospikeAddr: 127.0.0.1  # for testing purposes, or if for some reason this isnt localhost, what ip do we connect to for aerospike?
+  aerospikePort: 3000 # There is no default, must specify the port aerospike runs on. By default asd runs off port 3000.
   skipNodeCheck: true  # for testing purposes, setting this to false will disable the check that ensures we are only scanning our local node. Never set to false without understanding the consequences.
   failOnClusterChange: false  # scanPolicy, do we abort on cluster change?
   frequencySecs: 1  # how often to perform the scan
   verbose: true  # print debug/verbose logs to stdout.
-  aerospikePort: 3000 # There is no default, must specify the port aerospike runs on. By default asd runs off port 3000.
   username: foo # username to login to aerospike (Basic auth). omit if auth not enabled.
   password: bar # password to login with username (basic auth). omit if auth not enabled. Only considered if username is defined.
 
