@@ -6,6 +6,9 @@ service:
   failOnClusterChange: false  # scanPolicy, do we abort on cluster change?
   frequencySecs: 1  # how often to perform the scan
   verbose: true  # print debug/verbose logs to stdout.
+  aerospikePort: 3000 # There is no default, must specify the port aerospike runs on. By default asd runs off port 3000.
+  username: foo # username to login to aerospike (Basic auth). omit if auth not enabled.
+  password: bar # password to login with username (basic auth). omit if auth not enabled. Only considered if username is defined.
 
 monitor:
   - namespace: mynamespace
