@@ -51,16 +51,16 @@ func findLocalIps() error {
 
 func aeroInit() error {
 	//function to define policies and connect to aerospike.
-	log.Info("Connecting to ", config.Service.NodeAddr, "...")
+	log.Info("Connecting to ", config.Service.AerospikeAddr, "...")
 	if config.Service.Username != "" {
 		cp := as.NewClientPolicy()
 		cp.User = config.Service.Username
 		if config.Service.Password != "" {
 			cp.Password = config.Service.Password
 		}
-		client, err = as.NewClientWithPolicy(cp, config.Service.NodeAddr, config.Service.AerospikePort)
+		client, err = as.NewClientWithPolicy(cp, config.Service.AerospikeAddr, config.Service.AerospikePort)
 	} else {
-		client, err = as.NewClient(config.Service.NodeAddr, config.Service.AerospikePort)
+		client, err = as.NewClient(config.Service.AerospikeAddr, config.Service.AerospikePort)
 	}
 
 	if err != nil || !client.IsConnected() {
