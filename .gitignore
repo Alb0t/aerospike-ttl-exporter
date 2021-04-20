@@ -7,3 +7,4 @@ dist
 debug
 gorelease.sh
 aerospike-ttl-exporter
+testconf.yaml

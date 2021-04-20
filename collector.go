@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var buildVersion = "0.2.6"
+var buildVersion = "0.2.8"
 var expirationTTLCounts *prometheus.GaugeVec
 var expirationTTLPercents *prometheus.GaugeVec
 
@@ -60,6 +60,9 @@ type serviceConf struct {
 	FailOnClusterChange bool   `yaml:"FailOnClusterChange"`
 	FrequencySecs       int    `yaml:"frequencySecs"`
 	Verbose             bool   `yaml:"verbose"`
+	Username            string `yaml:"username"`
+	Password            string `yaml:"password"`
+	AerospikePort       int    `yaml:"aerospikePort"`
 }
 
 type monconf struct {
