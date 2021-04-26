@@ -75,30 +75,57 @@ func aeroInit() error {
 	return nil
 }
 
-func countSetObjects(n *as.Node, ns, set string) int64 {
-	const statKey = "objects"
-	// get the list of cluster nodes
-	infop := as.NewInfoPolicy()
-	objCount := 0
+func countSet(n *as.Node, ns string, set string) int64 {
+	if set != "" {
+		cmd := fmt.Sprintf("sets/%s/%s", ns, set)
+		objCount := getCount(n, "objects", cmd, true)
+		return objCount
+	} else {
+		// this means we want to get the nullset which sucks.
+		// we have to return the difference of master_objects-(all set objects) given a namespace.
+		//
+		// since null set doesn't work with sets/s/s we will have to find what is in the nullset by adding up _all_ the sets in the ns and subtracting from total master_objects.
 
-	cmd := fmt.Sprintf("sets/%s/%s", ns, set)
+		// get list of all sets and their objects
+		cmd := fmt.Sprintf("sets/%s", ns)
+		objCount := getCount(n, "objects", cmd, false)
+		// objCount should contain the sum of all our sets now.
+
+		// now we get master objects.
+		cmd = fmt.Sprintf("namespace/%s", ns)
+		masterObjects := getCount(n, "master_objects", cmd, true)
+		nullSetCount := masterObjects - objCount
+		log.Debug("Found masterObjects=", masterObjects, " and total set counts=", objCount, " so our null-set must be:", nullSetCount)
+		return nullSetCount
+	}
+}
+
+func getCount(n *as.Node, statKey string, cmd string, single bool) int64 {
+	// get count of some asinfo command
+	// use single=true to break on the first match found, or single=false to get sum of all matches
+	infop := as.NewInfoPolicy()
+	var count int64
 	info, err := n.RequestInfo(infop, cmd)
 	if err != nil {
 		return -1
 	}
-	vals := strings.Split(info[cmd], ":")
-	for _, val := range vals {
-		if i := strings.Index(val, statKey); i > -1 {
-			cnt, err := strconv.Atoi(val[i+len(statKey)+1:])
-			if err != nil {
-				return -1
+	vals := strings.Split(info[cmd], ";")
+	for _, v := range vals {
+		innerVals := strings.Split(v, ":")
+		for _, val := range innerVals {
+			if i := strings.Index(val, statKey); i > -1 {
+				cnt, err := strconv.Atoi(val[i+len(statKey)+1:])
+				if err != nil {
+					return -1
+				}
+				count += int64(cnt)
+				if single == true {
+					break // early-exit if we only wanted 1 count from this
+				}
 			}
-			objCount += cnt
-			break
 		}
 	}
-
-	return int64(objCount)
+	return count
 }
 
 func getLocalNode() *as.Node {
@@ -194,12 +221,18 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	// Aerospike deprecated ScanPercent because they're evil
 	// so we'll do it ourselves.
 	// TODO: maybe add predexp digest mod match.
-	if element.ScanPercent > 0 && element.Recordcount == -1 {
-		sampleRecCount := float64(countSetObjects(localNode, namespace, set)) * element.ScanPercent / 100
+	if element.ScanPercent > 0 && element.ScanPercent < 100 && element.Recordcount == -1 {
+		setCount := countSet(localNode, namespace, set)
+		log.Debug("Got setCount of:", setCount, " for localNode=", localNode, ", namespace=", namespace, ", set=", set, ".")
+		sampleRecCount := int64(float64(countSet(localNode, namespace, set)) * element.ScanPercent / 100)
+		if sampleRecCount < 1 {
+			log.Error("Nonsensical record count calculated:", sampleRecCount, ". Probably a bug.. lets not do this.")
+			return "Refusing to scan since we calculated a nonsense sample record count."
+		}
 		scanpol.MaxRecords = int64(sampleRecCount)
 		log.Debug("Setting max records to ", sampleRecCount, " based off sample percent ", element.ScanPercent)
-	} else if element.ScanPercent > 100 {
-		log.Warn("Setting max records to 0 to scan 100% of data, seems kinda silly so warnings you..")
+	} else if element.ScanPercent >= 100 {
+		log.Warn("Setting max records to 0 to scan 100% of data, seems kinda silly so warning you..")
 		scanpol.MaxRecords = 0
 	} else {
 		scanpol.MaxRecords = int64(element.Recordcount)
