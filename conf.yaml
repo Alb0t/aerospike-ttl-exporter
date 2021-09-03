@@ -3,8 +3,7 @@ service:
   listenPort: :9634  # which port the exporter binds on.
   aerospikeAddr: 127.0.0.1  # for testing purposes, or if for some reason this isnt localhost, what ip do we connect to for aerospike?
   aerospikePort: 3000 # There is no default, must specify the port aerospike runs on. By default asd runs off port 3000.
-  skipNodeCheck: true  # for testing purposes, setting this to false will disable the check that ensures we are only scanning our local node. Never set to false without understanding the consequences.
-  failOnClusterChange: false  # scanPolicy, do we abort on cluster change?
+  skipNodeCheck: false # for testing purposes, setting this to true will disable the check that ensures we are only scanning our local node. Never set to true without understanding the consequences.
   frequencySecs: 1  # how often to perform the scan
   verbose: true  # print debug/verbose logs to stdout.
   username: foo # username to login to aerospike (Basic auth). omit if auth not enabled.
@@ -21,7 +20,6 @@ monitor:
     exportTypeDivision: 86400  # What should we divide by the seconds to get the bucket size? 86400=1day
     exportBucketMultiply: 1  # Multiply the bucket value by this before exporting (default 1)
     reportCount: 300000  # if running verbose, How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
-    scanPriority: 1  # 1=LOW, 2=MED, 3=HIGH
     scanTotalTimeout: 20m  # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
     scanSocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     policyTotalTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
@@ -37,7 +35,6 @@ monitor:
     exportTypeDivision: 86400  # What should we divide by the seconds to get the bucket size? 86400=1day
     exportBucketMultiply: 1  # Multiply the bucket value by this before exporting (default 1)
     reportCount: 300000  # if running verbose, How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
-    scanPriority: 1  # 1=LOW, 2=MED, 3=HIGH
     scanTotalTimeout: 20m  # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
     scanSocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     policyTotalTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
