@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	as "github.com/aerospike/aerospike-client-go"
+	as "github.com/aerospike/aerospike-client-go/v5"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -69,9 +69,7 @@ func aeroInit() error {
 	}
 	log.Info("Connected:", client.IsConnected())
 	scanpol = as.NewScanPolicy()
-	scanpol.ConcurrentNodes = false
 	scanpol.IncludeBinData = false
-	scanpol.FailOnClusterChange = config.Service.FailOnClusterChange
 	return nil
 }
 
@@ -119,7 +117,7 @@ func getCount(n *as.Node, statKey string, cmd string, single bool) int64 {
 					return -1
 				}
 				count += int64(cnt)
-				if single == true {
+				if single {
 					break // early-exit if we only wanted 1 count from this
 				}
 			}
@@ -198,7 +196,7 @@ func parseDur(dur string) time.Duration {
 
 func updateStats(namespace string, set string, namespaceSet string, element monconf) string {
 	log.Debug("Running:", running)
-	if client == nil || client.IsConnected() == false {
+	if client == nil || !client.IsConnected() {
 		err := aeroInit()
 		if err != nil {
 			return "Failure during aeroInit()."
@@ -213,8 +211,6 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 		"namespace": namespace,
 		"set":       set,
 	}).Info("Begin scan/inspection.")
-	//scanpol.ScanPercent = element.ScanPercent // deprecated
-	scanpol.Priority = element.ScanPriority
 	scanpol.TotalTimeout = parseDur(element.ScanTotalTimeout)
 	scanpol.SocketTimeout = parseDur(element.ScanSocketTimeout)
 	scanpol.RecordsPerSecond = element.RecordsPerSecond // this will default to 0 if its not passed. that means no throttle (ahhh!!)

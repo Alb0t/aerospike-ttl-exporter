@@ -5,14 +5,13 @@ import (
 	"io/ioutil"
 	"os"
 
-	as "github.com/aerospike/aerospike-client-go"
 	"github.com/carlescere/scheduler"
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
-var buildVersion = "1.0.2"
+var buildVersion = "2.0.0"
 var expirationTTLCounts *prometheus.GaugeVec
 var expirationTTLPercents *prometheus.GaugeVec
 
@@ -66,22 +65,21 @@ type serviceConf struct {
 }
 
 type monconf struct {
-	Namespace            string      `yaml:"namespace"`
-	Set                  string      `yaml:"set"`
-	Recordcount          int         `yaml:"recordCount,omitempty"`
-	ScanPercent          float64     `yaml:"scanPercent,omitempty"`
-	ExportPercentages    bool        `yaml:"exportPercentages,omitempty"`
-	ExportRecordCount    bool        `yaml:"exportRecordCount,omitempty"`
-	ExportType           string      `yaml:"exportType,omitempty"`
-	ExportTypeDivision   uint32      `yaml:"exportTypeDivision,omitempty"`
-	ExportBucketMultiply uint32      `yaml:"exportBucketMultiply,omitempty"`
-	ReportCount          int         `yaml:"reportCount,omitempty"`
-	ScanPriority         as.Priority `yaml:"scanPriority"`
-	ScanTotalTimeout     string      `yaml:"scanTotalTimeout"`
-	ScanSocketTimeout    string      `yaml:"scanSocketTimeout"`
-	PolicyTotalTimeout   string      `yaml:"policyTotalTimeout"`
-	PolicySocketTimeout  string      `yaml:"policySocketTimeout"`
-	RecordsPerSecond     int         `yaml:"recordsPerSecond"`
+	Namespace            string  `yaml:"namespace"`
+	Set                  string  `yaml:"set"`
+	Recordcount          int     `yaml:"recordCount,omitempty"`
+	ScanPercent          float64 `yaml:"scanPercent,omitempty"`
+	ExportPercentages    bool    `yaml:"exportPercentages,omitempty"`
+	ExportRecordCount    bool    `yaml:"exportRecordCount,omitempty"`
+	ExportType           string  `yaml:"exportType,omitempty"`
+	ExportTypeDivision   uint32  `yaml:"exportTypeDivision,omitempty"`
+	ExportBucketMultiply uint32  `yaml:"exportBucketMultiply,omitempty"`
+	ReportCount          int     `yaml:"reportCount,omitempty"`
+	ScanTotalTimeout     string  `yaml:"scanTotalTimeout"`
+	ScanSocketTimeout    string  `yaml:"scanSocketTimeout"`
+	PolicyTotalTimeout   string  `yaml:"policyTotalTimeout"`
+	PolicySocketTimeout  string  `yaml:"policySocketTimeout"`
+	RecordsPerSecond     int     `yaml:"recordsPerSecond"`
 }
 
 func (c *conf) getConf() *conf {
