@@ -61,9 +61,6 @@ func aeroInit() error {
 	logger := log.New(&buf, "AerospikeLogger: ", log.LstdFlags|log.Lshortfile)
 	logger.SetOutput(os.Stdout)
 	asl.Logger.SetLogger(logger)
-	cp.ConnectionQueueSize = 20
-	cp.MinConnectionsPerNode = 10
-	cp.IdleTimeout = 55 * time.Second
 
 	if config.Service.Verbose {
 		asl.Logger.SetLevel(asl.DEBUG)
@@ -76,6 +73,10 @@ func aeroInit() error {
 		client.Close()
 
 	}
+	// TODO: make these configurable.
+	cp.ConnectionQueueSize = 20
+	cp.MinConnectionsPerNode = 10
+	cp.IdleTimeout = 55 * time.Second
 	//function to define policies and connect to aerospike.
 	logrus.Info("Connecting to ", config.Service.AerospikeAddr, "...")
 	if config.Service.Username != "" {
