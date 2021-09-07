@@ -74,8 +74,8 @@ func aeroInit() error {
 
 	}
 	// TODO: make these configurable.
-	cp.ConnectionQueueSize = 20
-	cp.MinConnectionsPerNode = 10
+	// cp.ConnectionQueueSize = 20
+	// cp.MinConnectionsPerNode = 10
 	cp.IdleTimeout = 55 * time.Second
 	//function to define policies and connect to aerospike.
 	logrus.Info("Connecting to ", config.Service.AerospikeAddr, "...")
@@ -178,7 +178,7 @@ func getCount(n *as.Node, statKey string, cmd string, single bool) int64 {
 
 func nodeWarmup(n *as.Node) {
 	logrus.Debug("Warming up node..")
-	warmCount, err := n.WarmUp(0)
+	warmCount, err := n.WarmUp(1)
 	if err != nil {
 		logrus.Fatal("Error during node warmup", err)
 	}
