@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var buildVersion = "2.0.2"
+var buildVersion = "2.0.3"
 var expirationTTLCounts *prometheus.GaugeVec
 var expirationTTLPercents *prometheus.GaugeVec
 
