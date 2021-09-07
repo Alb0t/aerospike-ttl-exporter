@@ -1,21 +1,29 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"log"
 	"net"
+	"os"
 	"strconv"
-
 	"strings"
 	"time"
 
 	as "github.com/aerospike/aerospike-client-go/v5"
-	log "github.com/sirupsen/logrus"
+	asl "github.com/aerospike/aerospike-client-go/v5/logger"
+
+	logrus "github.com/sirupsen/logrus"
 )
 
 var client *as.Client
-var scanpol *as.ScanPolicy
+var scanpol = as.NewScanPolicy()
 var policy = as.NewPolicy()
+var infoPolicy = as.NewInfoPolicy()
+var cp = as.NewClientPolicy()
 var err error
+var buf bytes.Buffer
+var backoff = 1.0
 
 func findLocalIps() error {
 	// this function is used to find the local node that the code is running on.
@@ -23,16 +31,16 @@ func findLocalIps() error {
 	// to automatically fail over to a DIFFERENT node. That would be bad.
 	// this should only be called once.
 	// mostly copy pasta from stack overflow
-	log.Info("Fetching local interfaces")
+	logrus.Info("Fetching local interfaces")
 	ifaces, ierr := net.Interfaces()
 	if ierr != nil {
-		log.Error("Error while retrieving net.Interfaces:", ierr)
+		logrus.Error("Error while retrieving net.Interfaces:", ierr)
 	}
 	for _, i := range ifaces {
-		log.Debug("Fetching addr for iface")
+		logrus.Debug("Fetching addr for iface")
 		addrs, errAd := i.Addrs()
 		if errAd != nil {
-			log.Error("Error while retrieving interface addresss:", errAd)
+			logrus.Error("Error while retrieving interface addresss:", errAd)
 		}
 		for _, addr := range addrs {
 			var ip net.IP
@@ -45,15 +53,33 @@ func findLocalIps() error {
 			localIps[ip.String()] = true // storing this as a map in case we call twice, don't want dupes
 		}
 	}
-	log.Debug("Printing localIp map:", localIps)
+	logrus.Debug("Printing localIp map:", localIps)
 	return nil
 }
 
 func aeroInit() error {
+	logger := log.New(&buf, "AerospikeLogger: ", log.LstdFlags|log.Lshortfile)
+	logger.SetOutput(os.Stdout)
+	asl.Logger.SetLogger(logger)
+
+	if config.Service.Verbose {
+		asl.Logger.SetLevel(asl.DEBUG)
+	} else {
+		asl.Logger.SetLevel(asl.INFO)
+	}
+
+	if client != nil && client.IsConnected() {
+		logrus.Warn("Client was connected but aeroinit called. Reopening connection")
+		client.Close()
+
+	}
+	// TODO: make these configurable.
+	cp.ConnectionQueueSize = 20
+	cp.MinConnectionsPerNode = 10
+	cp.IdleTimeout = 55 * time.Second
 	//function to define policies and connect to aerospike.
-	log.Info("Connecting to ", config.Service.AerospikeAddr, "...")
+	logrus.Info("Connecting to ", config.Service.AerospikeAddr, "...")
 	if config.Service.Username != "" {
-		cp := as.NewClientPolicy()
 		cp.User = config.Service.Username
 		if config.Service.Password != "" {
 			cp.Password = config.Service.Password
@@ -64,11 +90,11 @@ func aeroInit() error {
 	}
 
 	if err != nil || !client.IsConnected() {
-		log.Error("Exception while establishing connection:", err)
+		logrus.Fatal("Exception while establishing connection:", err)
 		return err
 	}
-	log.Info("Connected:", client.IsConnected())
-	scanpol = as.NewScanPolicy()
+	logrus.Info("Connected:", client.IsConnected())
+	//time.Sleep(15 * time.Second)
 	scanpol.IncludeBinData = false
 	return nil
 }
@@ -93,18 +119,42 @@ func countSet(n *as.Node, ns string, set string) int64 {
 		cmd = fmt.Sprintf("namespace/%s", ns)
 		masterObjects := getCount(n, "master_objects", cmd, true)
 		nullSetCount := masterObjects - objCount
-		log.Debug("Found masterObjects=", masterObjects, " and total set counts=", objCount, " so our null-set must be:", nullSetCount)
+		logrus.Debug("Found masterObjects=", masterObjects, " and total set counts=", objCount, " so our null-set must be:", nullSetCount)
 		return nullSetCount
+	}
+}
+
+func infoSanityCheck(n *as.Node) {
+	info, err := n.RequestInfo(infoPolicy, "status")
+	if backoff < 1 {
+		backoff = 1 // dont let this go to 0
+	}
+	if err != nil || info["status"] != "ok" {
+		logrus.Error("Sanity check failed, calling aeroInit. Status reported as:", info["status"], err)
+		e := aeroInit()
+		if e != nil {
+			logrus.Fatal("AeroInit failed:", e)
+		}
+		n = getLocalNode()
+		backoff = backoff * 1.2
+		backoffTime := time.Duration(backoff) * time.Second
+		logrus.Warn("Retrying sanityCheck with backoff:", backoff)
+		time.Sleep(backoffTime)
+		infoSanityCheck(n) // try again... forever?
+	} else {
+		backoff = backoff * 0.8
 	}
 }
 
 func getCount(n *as.Node, statKey string, cmd string, single bool) int64 {
 	// get count of some asinfo command
 	// use single=true to break on the first match found, or single=false to get sum of all matches
-	infop := as.NewInfoPolicy()
+	// infop := as.NewInfoPolicy()
+	infoSanityCheck(n)
 	var count int64
-	info, err := n.RequestInfo(infop, cmd)
+	info, err := n.RequestInfo(infoPolicy, cmd)
 	if err != nil {
+		logrus.Error("Info request error for getCount:", err)
 		return -1
 	}
 	vals := strings.Split(info[cmd], ";")
@@ -126,30 +176,40 @@ func getCount(n *as.Node, statKey string, cmd string, single bool) int64 {
 	return count
 }
 
-func getLocalNode() *as.Node {
-	log.Debug("Finding local node.")
-	var localNode *as.Node
-	log.Debug("Fetching membership list..")
-	nodes := client.GetNodes()
-	log.Debug("Looping through active cluster nodes")
-	if config.Service.SkipNodeCheck {
-		return nodes[0]
+func nodeWarmup(n *as.Node) {
+	logrus.Debug("Warming up node..")
+	warmCount, err := n.WarmUp(0)
+	if err != nil {
+		logrus.Fatal("Error during node warmup", err)
 	}
-	for _, node := range nodes {
-		// convert the node to a string, then split that to find the addr
+	logrus.Debug("Warmed up connections: ", warmCount)
+}
 
-		nodeStr := fmt.Sprint(node)
-		nodeAddrStrWithPort := strings.Split(nodeStr, " ")
-		if nodeAddrStrWithPort == nil || len(nodeAddrStrWithPort) != 2 {
-			log.Error("Did not find expected node format in client.GetNodes")
-			continue
-		}
-		nodeaddrStr := strings.Split(nodeAddrStrWithPort[1], ":")[0]
-		log.Debug("Comparing against local ip list..")
-		for localIP := range localIps {
-			if localIP == nodeaddrStr {
-				log.Debug("found node with matching localip ", localIP, "==", node)
-				localNode = node
+func getLocalNode() *as.Node {
+	logrus.Debug("Finding local node.")
+	var localNode *as.Node
+	logrus.Debug("Fetching membership list..")
+	nodes := client.GetNodes()
+	logrus.Debug("Looping through active cluster nodes")
+	if config.Service.SkipNodeCheck {
+		localNode = nodes[0]
+	} else {
+		for _, node := range nodes {
+			// convert the node to a string, then split that to find the addr
+
+			nodeStr := fmt.Sprint(node)
+			nodeAddrStrWithPort := strings.Split(nodeStr, " ")
+			if nodeAddrStrWithPort == nil || len(nodeAddrStrWithPort) != 2 {
+				logrus.Error("Did not find expected node format in client.GetNodes")
+				continue
+			}
+			nodeaddrStr := strings.Split(nodeAddrStrWithPort[1], ":")[0]
+			logrus.Debug("Comparing against local ip list..")
+			for localIP := range localIps {
+				if localIP == nodeaddrStr {
+					logrus.Debug("found node with matching localip ", localIP, "==", node)
+					localNode = node
+				}
 			}
 		}
 	}
@@ -157,15 +217,15 @@ func getLocalNode() *as.Node {
 }
 
 func runner() {
-	log.Debug("Printing namespaces to monitor and their config below.")
+	logrus.Debug("Printing namespaces to monitor and their config below.")
 	for _, x := range config.Monitor {
-		log.Debugf("%+v", x)
+		logrus.Debugf("%+v", x)
 	}
 	for _, element := range config.Monitor {
 		// if for some reason the scheduler calls us concurrently, just skip the new runs until the existing one is done
 		// probably just paranoia.
 		if running {
-			log.Warn("Already running. Skipping.")
+			logrus.Warn("Already running. Skipping.")
 		}
 		running = true
 		// while I am splitting namespace and set for aerospike calls and metric display,
@@ -174,12 +234,14 @@ func runner() {
 		err := updateStats(element.Namespace, element.Set, element.Namespace+":"+element.Set, element)
 		finishTime := float64(time.Now().Unix())
 		timeToUpdate := float64((finishTime - startTime) / 60)
-		log.Info("Scan for ", element.Namespace, ":", element.Set, " took ", timeToUpdate, " minutes.")
+		logrus.Info("Scan for ", element.Namespace, ":", element.Set, " took ", timeToUpdate, " minutes.")
 		scanTimes.WithLabelValues(element.Namespace, element.Set).Set(timeToUpdate)
-		scanLastUpdated.WithLabelValues(element.Namespace, element.Set).Set(finishTime)
 
 		if err != "" {
-			log.Error("There was a problem updating the stats.", err)
+			logrus.Error("There was a problem updating the stats.", err)
+		} else {
+			// Only update the "aerospike_ttl_scan_last_updated" metric if the update was successful.
+			scanLastUpdated.WithLabelValues(element.Namespace, element.Set).Set(finishTime)
 		}
 		running = false
 	}
@@ -195,7 +257,7 @@ func parseDur(dur string) time.Duration {
 }
 
 func updateStats(namespace string, set string, namespaceSet string, element monconf) string {
-	log.Debug("Running:", running)
+	logrus.Debug("Running:", running)
 	if client == nil || !client.IsConnected() {
 		err := aeroInit()
 		if err != nil {
@@ -203,11 +265,12 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 		}
 	}
 	localNode := getLocalNode()
+	nodeWarmup(localNode)
 	if localNode == nil {
 		return "Did not find self in node list"
 	}
 
-	log.WithFields(log.Fields{
+	logrus.WithFields(logrus.Fields{
 		"namespace": namespace,
 		"set":       set,
 	}).Info("Begin scan/inspection.")
@@ -219,16 +282,16 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	// TODO: maybe add predexp digest mod match.
 	if element.ScanPercent > 0 && element.ScanPercent < 100 && element.Recordcount == -1 {
 		setCount := countSet(localNode, namespace, set)
-		log.Debug("Got setCount of:", setCount, " for localNode=", localNode, ", namespace=", namespace, ", set=", set, ".")
+		logrus.Debug("Got setCount of:", setCount, " for localNode=", localNode, ", namespace=", namespace, ", set=", set, ".")
 		sampleRecCount := int64(float64(countSet(localNode, namespace, set)) * element.ScanPercent / 100)
 		if sampleRecCount < 1 {
-			log.Error("Nonsensical record count calculated:", sampleRecCount, ". Probably a bug.. lets not do this.")
+			logrus.Error("Nonsensical record count calculated:", sampleRecCount, ". Probably a bug.. lets not do this.")
 			return "Refusing to scan since we calculated a nonsense sample record count."
 		}
 		scanpol.MaxRecords = int64(sampleRecCount)
-		log.Debug("Setting max records to ", sampleRecCount, " based off sample percent ", element.ScanPercent)
+		logrus.Debug("Setting max records to ", sampleRecCount, " based off sample percent ", element.ScanPercent)
 	} else if element.ScanPercent >= 100 {
-		log.Warn("Setting max records to 0 to scan 100% of data, seems kinda silly so warning you..")
+		logrus.Warn("Setting max records to 0 to scan 100% of data, seems kinda silly so warning you..")
 		scanpol.MaxRecords = 0
 	} else {
 		scanpol.MaxRecords = int64(element.Recordcount)
@@ -243,13 +306,13 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	for rec := range recs.Results() {
 		if config.Service.Verbose {
 			if total%element.ReportCount == 0 { // this is after the scan is done. may not be valuable other than for debugging.
-				log.Info("Processed ", total, " records...")
+				logrus.Info("Processed ", total, " records...")
 			}
 		}
 		if rec.Err == nil {
 			totalInspected++
 			if rec.Record.Expiration == 4294967295 {
-				//log.Debug("Found non-expirable record, not adding to total or exporting.")
+				//logrus.Debug("Found non-expirable record, not adding to total or exporting.")
 				// too noisy
 			} else {
 				total++
@@ -257,12 +320,12 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 				resultMap[namespaceSet][expireTime]++
 			}
 		} else {
-			log.Error("Error while inspecting scan results: ", rec.Err)
-			log.Warn("Sleeping 140s since we hit an error to allow any pending scan to clear out.")
+			logrus.Error("Error while inspecting scan results: ", rec.Err)
+			logrus.Warn("Sleeping 140s since we hit an error to allow any pending scan to clear out.")
 			time.Sleep(140 * time.Second)
 		}
 		if element.Recordcount != -1 && total >= element.Recordcount {
-			log.Debug("Retrieved ", total, " records. Which is >= the limit specified of ", element.Recordcount, ". Will terminate query now.")
+			logrus.Debug("Retrieved ", total, " records. Which is >= the limit specified of ", element.Recordcount, ". Will terminate query now.")
 			recs.Close() // close the record set to stop the query
 			break
 		}
@@ -287,7 +350,7 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	if element.ExportRecordCount {
 		expirationTTLCounts.WithLabelValues("totalScanned", "total", namespace, set).Set(float64(total))
 	}
-	log.WithFields(log.Fields{
+	logrus.WithFields(logrus.Fields{
 		"total(records exported)": total,
 		"totalInspected":          totalInspected,
 		"namespace":               namespace,
