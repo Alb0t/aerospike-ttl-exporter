@@ -65,7 +65,7 @@ func aeroInit() error {
 	if config.Service.Verbose {
 		asl.Logger.SetLevel(asl.DEBUG)
 	} else {
-		asl.Logger.SetLevel(asl.INFO)
+		asl.Logger.SetLevel(asl.ERROR)
 	}
 
 	if client != nil && client.IsConnected() {
