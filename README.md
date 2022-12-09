@@ -3,7 +3,7 @@
 A prometheus exporter than scans record ttl for Aerospike and exports it.
 
 # The problem:
-tl;dr - this allows us to measure storage capacity in a situation where we store at-eviction.
+tl;dr - this allows us to measure storage capacity in a situation where we store until eviction.
 
 TTL (time-to-live) on a record dictates when the record will expire, and if evicting we need to measure the lowest bucket and trends of these ttls.
 
