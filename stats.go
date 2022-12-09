@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	as "github.com/aerospike/aerospike-client-go/v5"
-	asl "github.com/aerospike/aerospike-client-go/v5/logger"
+	as "github.com/aerospike/aerospike-client-go/v6"
+	asl "github.com/aerospike/aerospike-client-go/v6/logger"
 
 	logrus "github.com/sirupsen/logrus"
 )
@@ -99,28 +99,36 @@ func aeroInit() error {
 	return nil
 }
 
+func getReplicationFactor(n *as.Node, ns string) int64 {
+	cmd := fmt.Sprintf("namespace/%s", ns)
+	repl := getCount(n, "replication-factor", cmd, true)
+	return repl
+}
+
 func countSet(n *as.Node, ns string, set string) int64 {
+	repl := getReplicationFactor(n, ns)
+	logrus.Debug("Found replication factor=", repl, " for ns ", ns)
 	if set != "" {
 		cmd := fmt.Sprintf("sets/%s/%s", ns, set)
 		objCount := getCount(n, "objects", cmd, true)
-		return objCount
+		return (objCount / repl)
 	} else {
 		// this means we want to get the nullset which sucks.
-		// we have to return the difference of master_objects-(all set objects) given a namespace.
+		// we have to return the difference of objects-(all set objects) given a namespace.
 		//
-		// since null set doesn't work with sets/s/s we will have to find what is in the nullset by adding up _all_ the sets in the ns and subtracting from total master_objects.
+		// since null set doesn't work with sets/s/s we will have to find what is in the nullset by adding up _all_ the sets in the ns and subtracting from total objects.
 
 		// get list of all sets and their objects
 		cmd := fmt.Sprintf("sets/%s", ns)
-		objCount := getCount(n, "objects", cmd, false)
+		setsObjCount := getCount(n, "objects", cmd, false)
 		// objCount should contain the sum of all our sets now.
 
-		// now we get master objects.
+		// now we get objects.
 		cmd = fmt.Sprintf("namespace/%s", ns)
-		masterObjects := getCount(n, "master_objects", cmd, true)
-		nullSetCount := masterObjects - objCount
-		logrus.Debug("Found masterObjects=", masterObjects, " and total set counts=", objCount, " so our null-set must be:", nullSetCount)
-		return nullSetCount
+		totalNsObjects := getCount(n, "objects", cmd, true)
+		nullSetCount := totalNsObjects - setsObjCount
+		logrus.Debug("Found objects=", totalNsObjects, " and total set counts=", setsObjCount, " so our null-set must be:", nullSetCount)
+		return (nullSetCount / repl)
 	}
 }
 
@@ -162,13 +170,15 @@ func getCount(n *as.Node, statKey string, cmd string, single bool) int64 {
 		innerVals := strings.Split(v, ":")
 		for _, val := range innerVals {
 			if i := strings.Index(val, statKey); i > -1 {
-				cnt, err := strconv.Atoi(val[i+len(statKey)+1:])
-				if err != nil {
-					return -1
-				}
-				count += int64(cnt)
-				if single {
-					break // early-exit if we only wanted 1 count from this
+				if strings.Split(val, "=")[0] == statKey {
+					cnt, err := strconv.Atoi(val[i+len(statKey)+1:])
+					if err != nil {
+						return -1
+					}
+					count += int64(cnt)
+					if single {
+						break // early-exit if we only wanted 1 count from this
+					}
 				}
 			}
 		}
