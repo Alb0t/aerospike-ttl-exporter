@@ -11,32 +11,33 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var buildVersion = "2.1.1"
-var expirationTTLCounts *prometheus.GaugeVec
-var expirationTTLPercents *prometheus.GaugeVec
-
+var buildVersion = "3.0.1"
 var configFile = flag.String("configFile", "/etc/ttl-aerospike-exporter.yaml", "The yaml config file for the exporter")
+var ns_set_to_histograms = make(map[string]map[string]*prometheus.HistogramVec)
 
 var buildInfo = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
-		Name: "aerospike_ttl_build_info",
-		Help: "Build info",
+		Namespace: "aerospike_ttl",
+		Name:      "build_info",
+		Help:      "Build info",
 	},
 	[]string{"version"},
 )
 
 var scanTimes = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
-		Name: "aerospike_ttl_scan_minutes",
-		Help: "Scan times in minutes.",
+		Namespace: "aerospike_ttl",
+		Name:      "scan_time_seconds",
+		Help:      "Scan times in seconds.",
 	},
 	[]string{"namespace", "set"},
 )
 
 var scanLastUpdated = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
-		Name: "aerospike_ttl_scan_last_updated",
-		Help: "Epoch time that scan last finished.",
+		Namespace: "aerospike_ttl",
+		Name:      "scan_last_updated",
+		Help:      "Epoch time that scan last finished.",
 	},
 	[]string{"namespace", "set"},
 )
@@ -65,38 +66,36 @@ type serviceConf struct {
 }
 
 type monconf struct {
-	Namespace            string  `yaml:"namespace"`
-	Set                  string  `yaml:"set"`
-	Recordcount          int     `yaml:"recordCount,omitempty"`
-	ScanPercent          float64 `yaml:"scanPercent,omitempty"`
-	ExportPercentages    bool    `yaml:"exportPercentages,omitempty"`
-	ExportRecordCount    bool    `yaml:"exportRecordCount,omitempty"`
-	ExportType           string  `yaml:"exportType,omitempty"`
-	ExportTypeDivision   uint32  `yaml:"exportTypeDivision,omitempty"`
-	ExportBucketMultiply uint32  `yaml:"exportBucketMultiply,omitempty"`
-	ReportCount          int     `yaml:"reportCount,omitempty"`
-	ScanTotalTimeout     string  `yaml:"scanTotalTimeout"`
-	ScanSocketTimeout    string  `yaml:"scanSocketTimeout"`
-	PolicyTotalTimeout   string  `yaml:"policyTotalTimeout"`
-	PolicySocketTimeout  string  `yaml:"policySocketTimeout"`
-	RecordsPerSecond     int     `yaml:"recordsPerSecond"`
+	Namespace               string    `yaml:"namespace"`
+	Set                     string    `yaml:"set"`
+	Recordcount             int       `yaml:"recordCount,omitempty"`
+	ScanPercent             float64   `yaml:"scanPercent,omitempty"`
+	NumberOfBucketsToExport int       `yaml:"numberOfBucketsToExport,omitempty"`
+	BucketWidth             int       `yaml:"bucketWidth,omitempty"`
+	BucketStart             int       `yaml:"bucketStart,omitempty"`
+	StaticBucketList        []float64 `yaml:"staticBucketList,omitempty"`
+	ReportCount             int       `yaml:"reportCount,omitempty"`
+	ScanTotalTimeout        string    `yaml:"scanTotalTimeout"`
+	ScanSocketTimeout       string    `yaml:"scanSocketTimeout"`
+	PolicyTotalTimeout      string    `yaml:"policyTotalTimeout"`
+	PolicySocketTimeout     string    `yaml:"policySocketTimeout"`
+	RecordsPerSecond        int       `yaml:"recordsPerSecond"`
 }
 
-func (c *conf) getConf() *conf {
+func (c *conf) setConf() {
 	flag.Parse()
 	yamlFile, err := ioutil.ReadFile(*configFile)
 	if err != nil {
 		log.Fatal("Failed to read configfile: ", *configFile)
 	}
-	err = yaml.Unmarshal(yamlFile, c)
+	err = yaml.Unmarshal(yamlFile, c) // This actually writes it back to *conf
 	if err != nil {
 		log.Fatal("Failed to unmarshal configfile, bad format? File:", *configFile)
 	}
-	return c
 }
 
 func init() {
-	config.getConf()
+	config.setConf()
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp: true,
 	})
@@ -108,27 +107,51 @@ func init() {
 		log.SetLevel(log.InfoLevel)
 	}
 
-	expirationTTLPercents = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "aerospike_ttl_percents",
-			Help: "Time in which this many records will expire. Sampled locally. Shows percentages of how many records were found in each bucket vs total records scanned.",
-		},
-		[]string{"exportType", "ttl", "namespace", "set"},
-	)
+	// We need to define a histogram for each monconf (ns/set/buckets)
+	for histogramConfIndex := range config.Monitor {
+		histogramConf := config.Monitor[histogramConfIndex]
+		namespace := histogramConf.Namespace
+		set := histogramConf.Set
+		var buckets []float64
+		number_of_buckets := histogramConf.NumberOfBucketsToExport
+		bucket_width := float64(histogramConf.BucketWidth)
+		bucket_start := float64(histogramConf.BucketStart)
 
-	expirationTTLCounts = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "aerospike_ttl_counts",
-			Help: "Time in which this many records will expire. Sampled locally. Shows counts of how many records were found in each bucket.",
-		},
-		[]string{"exportType", "ttl", "namespace", "set"},
-	)
-	prometheus.MustRegister(buildInfo)
+		// buckets definitions
+		if len(histogramConf.StaticBucketList) > 0 {
+			if number_of_buckets != 0 || bucket_width != 0 { // cant check that bucket_start is not 0 because thats a reasonable start value.
+				log.Fatalf("Static list of buckets chosen for %s.%s but bucket count or bucket width defined.", namespace, set)
+			}
+			// should be using static buckets if we are still here.
+			buckets = histogramConf.StaticBucketList
+		} else {
+			buckets = prometheus.LinearBuckets(bucket_start, bucket_width, number_of_buckets)
+		}
+
+		//Buckets: []float64{0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0},  // Custom static buckets
+
+		expirationTTLCountsHist := prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:        "aerospike_expiration_ttl_counts_hist",
+				Help:        "h",
+				Buckets:     buckets,
+				ConstLabels: prometheus.Labels{"namespace": namespace, "set": set},
+			}, []string{},
+		)
+		prometheus.MustRegister(expirationTTLCountsHist)
+
+		histograms := make(map[string]*prometheus.HistogramVec)
+		histograms["counts"] = expirationTTLCountsHist
+
+		// Add the HistogramVec to the inner map
+		ns_set_to_histograms[namespace+"_"+set] = histograms
+
+		//now we can call something like ns_set_to_histograms[mynamespace_myset].Observe in the future.
+	}
 	prometheus.MustRegister(scanTimes)
 	prometheus.MustRegister(scanLastUpdated)
+	prometheus.MustRegister(buildInfo)
 	buildInfo.WithLabelValues(buildVersion).Set(1)
-	prometheus.MustRegister(expirationTTLPercents)
-	prometheus.MustRegister(expirationTTLCounts)
 
 	// create a list of local ips to compare against and ensure we are checking the local node only
 	// this should only need to happen once

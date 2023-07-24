@@ -3,7 +3,7 @@
 A prometheus exporter than scans record ttl for Aerospike and exports it.
 
 # The problem:
-tl;dr - this allows us to measure storage capacity in a situation where we store until eviction.
+tl;dr - this allows us to measure storage capacity in a situation where we store data until eviction, or we want to understand the distribution of TTLs better within a system and monitor that over time.
 
 TTL (time-to-live) on a record dictates when the record will expire, and if evicting we need to measure the lowest bucket and trends of these ttls.
 
@@ -15,89 +15,33 @@ The data currently exported by Aerospike histogram dumps is not accurate enough 
 
 Example output:
 ```
-# HELP aerospike_ttl_build_info Build info
-# TYPE aerospike_ttl_build_info gauge
-aerospike_ttl_build_info{version="0.2.0"} 1
-# HELP aerospike_ttl_percents Time in which this many records will expire. Sampled locally. Shows percentages of how many records were found in each bucket vs total records scanned.
-# TYPE aerospike_ttl_percents gauge
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="140"} 1.16
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="141"} 1.902
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="142"} 1.56
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="143"} 1.812
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="144"} 1.7
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="145"} 1.624
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="146"} 1.896
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="147"} 2.14
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="148"} 1.468
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="149"} 1.894
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="150"} 2.054
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="151"} 1.86
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="152"} 1.722
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="153"} 1.758
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="154"} 1.928
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="155"} 1.99
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="156"} 1.796
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="157"} 1.898
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="158"} 1.882
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="159"} 1.918
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="160"} 2.954
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="161"} 1.93
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="162"} 2.186
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="163"} 2.112
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="164"} 2.6
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="165"} 2.544
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="166"} 3.028
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="167"} 2.942
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="168"} 4.542
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="169"} 2.988
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="170"} 2.584
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="171"} 2.744
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="172"} 3.05
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="173"} 2.206
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="174"} 2.84
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="175"} 3.866
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="176"} 3.932
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="177"} 2.54
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="178"} 2.218
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="179"} 2.154
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="180"} 0.088
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="181"} 0.052
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="182"} 0.172
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="183"} 0.248
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="184"} 0.136
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="185"} 0.09
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="186"} 0.08
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="187"} 0.112
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="188"} 0.098
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="189"} 0.142
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="190"} 0.166
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="191"} 0.178
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="192"} 0.078
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="193"} 0.09
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="194"} 0.108
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="195"} 0.124
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="196"} 0.072
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="197"} 0.204
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="198"} 0.31
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="199"} 0.118
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="200"} 0.136
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="201"} 0.156
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="202"} 0.214
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="203"} 0.228
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="204"} 0.314
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="205"} 0.21
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="206"} 0.342
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="207"} 0.31
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="208"} 0.56
-aerospike_ttl_percents{exportType="days",namespace="mynamespace",set="User",ttl="209"} 2.942
-aerospike_ttl_percents{exportType="totalScanned",namespace="mynamespace",set="User",ttl="total"} 50000
-# HELP aerospike_ttl_scan_last_updated Epoch time that scan last finished.
-# TYPE aerospike_ttl_scan_last_updated gauge
-aerospike_ttl_scan_last_updated{namespace="mynamespace",set="User"} 1.573758691e+09
-# HELP aerospike_ttl_scan_minutes Scan times in minutes.
-# TYPE aerospike_ttl_scan_minutes gauge
-aerospike_ttl_scan_minutes{namespace="mynamespace",set="User"} 0.21666666666666667
-
+....
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myOtherNS",set="",le="1.79712e+08"} 70028
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myOtherNS",set="",le="1.80576e+08"} 70028
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myOtherNS",set="",le="+Inf"} 70028
+aerospike_expiration_ttl_counts_hist_sum{namespace="myOtherNS",set=""} 3.68036698307e+11
+aerospike_expiration_ttl_counts_hist_count{namespace="myOtherNS",set=""} 70028
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.3824e+07"} 145142
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.4688e+07"} 186596
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.56384e+07"} 223357
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.9008e+07"} 241662
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="+Inf"} 241699
+aerospike_expiration_ttl_counts_hist_sum{namespace="myNS",set="Beans"} 3.166097393414e+12
+aerospike_expiration_ttl_counts_hist_count{namespace="myNS",set="Beans"} 241699
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="boo",le="1.3824e+07"} 9056
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="boo",le="1.4688e+07"} 11760
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="boo",le="1.56384e+07"} 13648
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="boo",le="1.9008e+07"} 16000
+aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="boo",le="+Inf"} 16000
+aerospike_expiration_ttl_counts_hist_sum{namespace="myNS",set="boo"} 2.1257415038e+11
+aerospike_expiration_ttl_counts_hist_count{namespace="myNS",set="boo"} 16000
+aerospike_ttl_build_info{version="3.0.0"} 1
+aerospike_ttl_scan_last_updated{namespace="myOtherNS",set=""} 1.690219845e+09
+aerospike_ttl_scan_last_updated{namespace="myNS",set="Beans"} 1.690219844e+09
+aerospike_ttl_scan_last_updated{namespace="myNS",set="boo"} 1.690219848e+09
+aerospike_ttl_scan_time_seconds{namespace="myOtherNS",set=""} 1
+aerospike_ttl_scan_time_seconds{namespace="myNS",set="Beans"} 6
+aerospike_ttl_scan_time_seconds{namespace="myNS",set="boo"} 1
 ```
 
 # To use:
@@ -136,20 +80,8 @@ time="2021-03-23T15:16:09-06:00" level=debug msg="Setting max records to 100 bas
 
 # Notes
 
-These options can be used to configure smaller/larger buckets:
-```
-  exportType string
-    	What label should we give the bucket
-  exportTypeDivision int
-    	What should we divide by the seconds to get the bucket size?
-  exportBucketMultiply int
-      Multiply the bucket value by this before exporting
- ```
+`staticBucketList` and `bucketWidth/numberOfBucketsToExport` are mutually exclusive. You must pick one or the other. Program will fail to start with a fatal log message if you try to specify both.
 
- For example, if you wanted 15 minute buckets, you could pass these as:
- ```
-   exportType: minutes
-   exportTypeDivision: 900
-   exportBucketMultiply: 15
- ```
- This would export things in 15 minute buckets, and report them as 'minutes'
+`staticBucketList` accepts an array of buckets you wish to define for the histogram.
+
+Alternatively, you can use `bucketWidth` `numberOfBucketsToExport` and `bucketStart` to specify a linear histogram.  
