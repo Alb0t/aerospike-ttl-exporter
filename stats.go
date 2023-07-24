@@ -25,6 +25,8 @@ var err error
 var buf bytes.Buffer
 var backoff = 1.0
 
+const NON_EXPIRABLE_TTL_VALUE = 4294967295
+
 func findLocalIps() error {
 	// this function is used to find the local node that the code is running on.
 	// by default, this is client.getnodes[0] - but if the node stops/starts, we don't want it
@@ -243,8 +245,9 @@ func runner() {
 		startTime := float64(time.Now().Unix())
 		err := updateStats(element.Namespace, element.Set, element.Namespace+":"+element.Set, element)
 		finishTime := float64(time.Now().Unix())
-		timeToUpdate := float64((finishTime - startTime) / 60)
-		logrus.Info("Scan for ", element.Namespace, ":", element.Set, " took ", timeToUpdate, " minutes.")
+		timeToUpdate := float64((finishTime - startTime))
+		timeToUpdateMinutes := float64(timeToUpdate / 60)
+		logrus.Info("Scan for ", element.Namespace, ":", element.Set, " took ", timeToUpdateMinutes, " minutes. Reporting as:", timeToUpdate, " seconds.")
 		scanTimes.WithLabelValues(element.Namespace, element.Set).Set(timeToUpdate)
 
 		if err != "" {
@@ -321,12 +324,13 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 		}
 		if rec.Err == nil {
 			totalInspected++
-			if rec.Record.Expiration == 4294967295 {
-				//logrus.Debug("Found non-expirable record, not adding to total or exporting.")
-				// too noisy
+			if rec.Record.Expiration == NON_EXPIRABLE_TTL_VALUE {
+				// non expirable record. The Aerospike server already has a log ticket for this.
+				// logrus.Debug("Found non-expirable record, not adding to total or exporting.")
+				// too noisy disabled logging on this
 			} else {
 				total++
-				expireTime := (rec.Record.Expiration / element.ExportTypeDivision) * element.ExportBucketMultiply
+				expireTime := rec.Record.Expiration
 				resultMap[namespaceSet][expireTime]++
 			}
 		} else {
@@ -341,24 +345,12 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 		}
 	}
 
-	// There might be a better way to do this, but i'm adding a reset here to clear out any buckets that aren't valuable anymore.
-	expirationTTLPercents.Reset()
-	expirationTTLCounts.Reset()
 	for key := range resultMap[namespaceSet] {
-		skey := fmt.Sprint(key) // this will be used as a label like {ttl="100"} so needs to be string.
-		if element.ExportPercentages {
-			percentInThisBucket := float64(resultMap[namespaceSet][key]) * float64(100) / float64(total)
-			expirationTTLPercents.WithLabelValues(element.ExportType, skey, namespace, set).Set(float64(percentInThisBucket))
+		num_records := float64(resultMap[namespaceSet][key])
+		for i := 0.0; i < num_records; i++ {
+			ns_set_to_histograms[namespace+"_"+set]["counts"].WithLabelValues().Observe(float64(key))
 		}
-		if element.ExportRecordCount {
-			expirationTTLCounts.WithLabelValues(element.ExportType, skey, namespace, set).Set(float64(resultMap[namespaceSet][key]))
-		}
-	}
-	if element.ExportPercentages {
-		expirationTTLPercents.WithLabelValues("totalScanned", "total", namespace, set).Set(float64(total))
-	}
-	if element.ExportRecordCount {
-		expirationTTLCounts.WithLabelValues("totalScanned", "total", namespace, set).Set(float64(total))
+
 	}
 	logrus.WithFields(logrus.Fields{
 		"total(records exported)": total,
