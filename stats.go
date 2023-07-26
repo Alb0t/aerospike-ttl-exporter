@@ -24,6 +24,8 @@ var cp = as.NewClientPolicy()
 var err error
 var buf bytes.Buffer
 var backoff = 1.0
+var measureOps []*as.Operation
+var opPolicy *as.WritePolicy
 
 const NON_EXPIRABLE_TTL_VALUE = 4294967295
 
@@ -260,6 +262,38 @@ func runner() {
 	}
 }
 
+// this stuff is pretty static. wanted it out of the way.
+func initRecSizeVars() ([]*as.Operation, *as.WritePolicy) {
+	policy := as.NewWritePolicy(0, 0)
+	policy.Expiration = as.TTLDontUpdate //dont change the TTL of a record. should result in a no-op.
+	dev_size_exp := as.ExpDeviceSize()
+	mem_size_exp := as.ExpMemorySize()
+	operations := []*as.Operation{
+		as.ExpReadOp("devsize", dev_size_exp, as.ExpReadFlagDefault),
+		as.ExpReadOp("memsize", mem_size_exp, as.ExpReadFlagDefault),
+	}
+	return operations, policy
+}
+
+func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operation, policy *as.WritePolicy) (int, int, error) {
+	// Apply the expression to a record
+	record, err := client.Operate(policy, key, operations...)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Print the result
+	memsize, mok := record.Bins["memsize"].(int)
+	if !mok {
+		log.Fatalf("Could not convert 'memsize' to int")
+	}
+
+	devsize, dok := record.Bins["devsize"].(int)
+	if !dok {
+		log.Fatalf("Could not convert 'devize' to int")
+	}
+	return devsize, memsize, err
+}
+
 // simple function to take a human duration input like 1m20s and return a time.Duration output
 func parseDur(dur string) time.Duration {
 	parsedDur, err := time.ParseDuration(dur)
@@ -315,7 +349,11 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	recs, _ := client.ScanNode(scanpol, localNode, namespace, set)
 	total := 0
 	totalInspected := 0
-	resultMap[namespaceSet] = make(map[uint32]int)
+
+	// if we intend to export mem/device size histograms, we'll need these vars
+	if element.ByteHistogram["memorySize"] || element.ByteHistogram["deviceSize"] {
+		measureOps, opPolicy = initRecSizeVars()
+	}
 	for rec := range recs.Results() {
 		if config.Service.Verbose {
 			if total%element.ReportCount == 0 { // this is after the scan is done. may not be valuable other than for debugging.
@@ -331,7 +369,30 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 			} else {
 				total++
 				expireTime := rec.Record.Expiration
-				resultMap[namespaceSet][expireTime]++
+				ns_set_to_histograms[namespaceSet]["counts"].WithLabelValues().Observe(float64(expireTime))
+
+				// handle byte histogram
+				// need to do an extra operation here unfortunately
+				// This should result in a no-op using "Operation" with "Expression" to return metadata only.
+				// should not incur IO expense.
+				if element.ByteHistogram["memorySize"] || element.ByteHistogram["deviceSize"] {
+					devsize, memsize, err := measureRecordSize(client, rec.Record.Key, measureOps, opPolicy)
+					if err != nil {
+						logrus.Errorf("Failure fetching record size. Err: %v", err)
+					}
+					if element.ByteHistogram["deviceSize"] {
+						// if this is 0, we wont even create the histogram. neat. hopefully that doesnt confuse people in the future
+						for i := 0; i < devsize; i++ {
+							ns_set_to_histograms[namespaceSet]["bytes"].WithLabelValues("device").Observe(float64(expireTime))
+						}
+					}
+					if element.ByteHistogram["memorySize"] {
+						// same here if memsize is 0, we wont get a histogram.
+						for i := 0; i < memsize; i++ {
+							ns_set_to_histograms[namespaceSet]["bytes"].WithLabelValues("memory").Observe(float64(expireTime))
+						}
+					}
+				}
 			}
 		} else {
 			logrus.Error("Error while inspecting scan results: ", rec.Err)
@@ -343,14 +404,6 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 			recs.Close() // close the record set to stop the query
 			break
 		}
-	}
-
-	for key := range resultMap[namespaceSet] {
-		num_records := float64(resultMap[namespaceSet][key])
-		for i := 0.0; i < num_records; i++ {
-			ns_set_to_histograms[namespace+"_"+set]["counts"].WithLabelValues().Observe(float64(key))
-		}
-
 	}
 	logrus.WithFields(logrus.Fields{
 		"total(records exported)": total,

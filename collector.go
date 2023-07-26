@@ -43,9 +43,8 @@ var scanLastUpdated = prometheus.NewGaugeVec(
 )
 
 // these are global because im lazy
-var running = false                             // bool to track whether a scan is running already or not.
-var localIps = make(map[string]bool)            // map to prevent duplicates, and a list of what our local ips are
-var resultMap = make(map[string]map[uint32]int) // map of namespace:set -> { ttl, count } stored globally so we can report 0 on unseen metrics if the server suddenly doesn't have any
+var running = false                  // bool to track whether a scan is running already or not.
+var localIps = make(map[string]bool) // map to prevent duplicates, and a list of what our local ips are
 var config conf
 
 type conf struct {
@@ -66,20 +65,21 @@ type serviceConf struct {
 }
 
 type monconf struct {
-	Namespace               string    `yaml:"namespace"`
-	Set                     string    `yaml:"set"`
-	Recordcount             int       `yaml:"recordCount,omitempty"`
-	ScanPercent             float64   `yaml:"scanPercent,omitempty"`
-	NumberOfBucketsToExport int       `yaml:"numberOfBucketsToExport,omitempty"`
-	BucketWidth             int       `yaml:"bucketWidth,omitempty"`
-	BucketStart             int       `yaml:"bucketStart,omitempty"`
-	StaticBucketList        []float64 `yaml:"staticBucketList,omitempty"`
-	ReportCount             int       `yaml:"reportCount,omitempty"`
-	ScanTotalTimeout        string    `yaml:"scanTotalTimeout"`
-	ScanSocketTimeout       string    `yaml:"scanSocketTimeout"`
-	PolicyTotalTimeout      string    `yaml:"policyTotalTimeout"`
-	PolicySocketTimeout     string    `yaml:"policySocketTimeout"`
-	RecordsPerSecond        int       `yaml:"recordsPerSecond"`
+	Namespace               string          `yaml:"namespace"`
+	Set                     string          `yaml:"set"`
+	Recordcount             int             `yaml:"recordCount,omitempty"`
+	ScanPercent             float64         `yaml:"scanPercent,omitempty"`
+	NumberOfBucketsToExport int             `yaml:"numberOfBucketsToExport,omitempty"`
+	BucketWidth             int             `yaml:"bucketWidth,omitempty"`
+	BucketStart             int             `yaml:"bucketStart,omitempty"`
+	StaticBucketList        []float64       `yaml:"staticBucketList,omitempty"`
+	ReportCount             int             `yaml:"reportCount,omitempty"`
+	ScanTotalTimeout        string          `yaml:"scanTotalTimeout"`
+	ScanSocketTimeout       string          `yaml:"scanSocketTimeout"`
+	PolicyTotalTimeout      string          `yaml:"policyTotalTimeout"`
+	PolicySocketTimeout     string          `yaml:"policySocketTimeout"`
+	RecordsPerSecond        int             `yaml:"recordsPerSecond"`
+	ByteHistogram           map[string]bool `yaml:"byteHistogram,omitempty"`
 }
 
 func (c *conf) setConf() {
@@ -128,23 +128,38 @@ func init() {
 			buckets = prometheus.LinearBuckets(bucket_start, bucket_width, number_of_buckets)
 		}
 
-		//Buckets: []float64{0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0},  // Custom static buckets
-
-		expirationTTLCountsHist := prometheus.NewHistogramVec(
-			prometheus.HistogramOpts{
-				Name:        "aerospike_expiration_ttl_counts_hist",
-				Help:        "h",
-				Buckets:     buckets,
-				ConstLabels: prometheus.Labels{"namespace": namespace, "set": set},
-			}, []string{},
-		)
-		prometheus.MustRegister(expirationTTLCountsHist)
-
 		histograms := make(map[string]*prometheus.HistogramVec)
-		histograms["counts"] = expirationTTLCountsHist
+
+		if histogramConf.ByteHistogram["deviceSize"] || histogramConf.ByteHistogram["memorySize"] {
+			expirationTTLBytesHist := prometheus.NewHistogramVec(
+				prometheus.HistogramOpts{
+					Namespace:   "aerospike_ttl",
+					Name:        "bytes_hist",
+					Help:        "Histogram of how many bytes fall into each ttl bucket. Memory will be the in-memory data size and does not include PI or SI.",
+					Buckets:     buckets,
+					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set},
+				}, []string{"storage_type"},
+			)
+			prometheus.MustRegister(expirationTTLBytesHist)
+			histograms["bytes"] = expirationTTLBytesHist
+		}
+
+		if true {
+			expirationTTLCountsHist := prometheus.NewHistogramVec(
+				prometheus.HistogramOpts{
+					Namespace:   "aerospike_ttl",
+					Name:        "counts_hist",
+					Help:        "Histogram of how many records fall into each ttl bucket.",
+					Buckets:     buckets,
+					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set},
+				}, []string{},
+			)
+			prometheus.MustRegister(expirationTTLCountsHist)
+			histograms["counts"] = expirationTTLCountsHist
+		}
 
 		// Add the HistogramVec to the inner map
-		ns_set_to_histograms[namespace+"_"+set] = histograms
+		ns_set_to_histograms[namespace+":"+set] = histograms
 
 		//now we can call something like ns_set_to_histograms[mynamespace_myset].Observe in the future.
 	}
