@@ -38,3 +38,13 @@ monitor:
     policyTotalTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     policySocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     RecordsPerSecond: 100 # not sure if this works on older versions, but it does right now as of v5. 0 means no limit.
+    ## KiB exports
+    # note on 'resolution here: this can have drastic perf implications
+    #  This directly affects how many times we call histogram.Observe.
+    #  ex. If you have a ~128,000 byte size record and resolution is set to 0.001 we will call observe 128,000 times.
+    # this does mean we lose some resolution on how large the records are, because they'll be rounded down by 'n' bytes.
+    # value is in KiB, recommend starting at something like 0.334 so our resolution will be around 334 bytes
+    kbyteHistogramResolution: 0.334 
+    kbyteHistogram: 
+      deviceSize: true
+      memorySize: false

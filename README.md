@@ -16,32 +16,23 @@ The data currently exported by Aerospike histogram dumps is not accurate enough 
 Example output:
 ```
 ....
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myOtherNS",set="",le="1.79712e+08"} 70028
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myOtherNS",set="",le="1.80576e+08"} 70028
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myOtherNS",set="",le="+Inf"} 70028
-aerospike_expiration_ttl_counts_hist_sum{namespace="myOtherNS",set=""} 3.68036698307e+11
-aerospike_expiration_ttl_counts_hist_count{namespace="myOtherNS",set=""} 70028
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.3824e+07"} 145142
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.4688e+07"} 186596
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.56384e+07"} 223357
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.9008e+07"} 241662
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="+Inf"} 241699
-aerospike_expiration_ttl_counts_hist_sum{namespace="myNS",set="Beans"} 3.166097393414e+12
-aerospike_expiration_ttl_counts_hist_count{namespace="myNS",set="Beans"} 241699
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="boo",le="1.3824e+07"} 9056
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="boo",le="1.4688e+07"} 11760
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="boo",le="1.56384e+07"} 13648
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="boo",le="1.9008e+07"} 16000
-aerospike_expiration_ttl_counts_hist_bucket{namespace="myNS",set="boo",le="+Inf"} 16000
-aerospike_expiration_ttl_counts_hist_sum{namespace="myNS",set="boo"} 2.1257415038e+11
-aerospike_expiration_ttl_counts_hist_count{namespace="myNS",set="boo"} 16000
-aerospike_ttl_build_info{version="3.0.0"} 1
-aerospike_ttl_scan_last_updated{namespace="myOtherNS",set=""} 1.690219845e+09
-aerospike_ttl_scan_last_updated{namespace="myNS",set="Beans"} 1.690219844e+09
-aerospike_ttl_scan_last_updated{namespace="myNS",set="boo"} 1.690219848e+09
-aerospike_ttl_scan_time_seconds{namespace="myOtherNS",set=""} 1
-aerospike_ttl_scan_time_seconds{namespace="myNS",set="Beans"} 6
-aerospike_ttl_scan_time_seconds{namespace="myNS",set="boo"} 1
+aerospike_ttl_build_info{version="3.1.0"} 1
+aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.3824e+07"} 858
+aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.4688e+07"} 901
+aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.56384e+07"} 971
+aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.9008e+07"} 1004
+aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="+Inf"} 1004
+aerospike_ttl_counts_hist_sum{namespace="myNS",set="Beans"} 9.037094916e+09
+aerospike_ttl_counts_hist_count{namespace="myNS",set="Beans"} 1004
+aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",storage_type="device",le="1.3824e+07"} 1938
+aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",storage_type="device",le="1.4688e+07"} 2046
+aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",storage_type="device",le="1.56384e+07"} 2196
+aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",storage_type="device",le="1.9008e+07"} 4041
+aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",storage_type="device",le="+Inf"} 4041
+aerospike_ttl_kib_hist_sum{namespace="myNS",set="Beans",storage_type="device"} 5.244241494e+10
+aerospike_ttl_kib_hist_count{namespace="myNS",set="Beans",storage_type="device"} 4041
+aerospike_ttl_scan_last_updated{namespace="myNS",set="Beans"} 1.690408779e+09
+aerospike_ttl_scan_time_seconds{namespace="myNS",set="Beans"} 103
 ```
 
 # To use:
