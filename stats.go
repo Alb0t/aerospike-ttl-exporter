@@ -24,6 +24,8 @@ var cp = as.NewClientPolicy()
 var err error
 var buf bytes.Buffer
 var backoff = 1.0
+var measureOps []*as.Operation
+var opPolicy *as.WritePolicy
 
 const NON_EXPIRABLE_TTL_VALUE = 4294967295
 
@@ -73,11 +75,12 @@ func aeroInit() error {
 	if client != nil && client.IsConnected() {
 		logrus.Warn("Client was connected but aeroinit called. Reopening connection")
 		client.Close()
-
 	}
 	// TODO: make these configurable.
 	// cp.ConnectionQueueSize = 20
-	// cp.MinConnectionsPerNode = 10
+	// cp.ConnectionQueueSize = 3
+	// cp.MinConnectionsPerNode = 1
+	// cp.TendInterval = 3
 	cp.IdleTimeout = 55 * time.Second
 	//function to define policies and connect to aerospike.
 	logrus.Info("Connecting to ", config.Service.AerospikeAddr, "...")
@@ -96,7 +99,6 @@ func aeroInit() error {
 		return err
 	}
 	logrus.Info("Connected:", client.IsConnected())
-	//time.Sleep(15 * time.Second)
 	scanpol.IncludeBinData = false
 	return nil
 }
@@ -260,6 +262,45 @@ func runner() {
 	}
 }
 
+// this stuff is pretty static. wanted it out of the way.
+func initRecSizeVars() ([]*as.Operation, *as.WritePolicy) {
+	writePolicy := as.NewWritePolicy(0, 0)
+	writePolicy.Expiration = as.TTLDontUpdate //dont change the TTL of a record. should result in a no-op.
+	writePolicy.MaxRetries = 10
+	writePolicy.SleepBetweenRetries = 334 //334ms.
+	writePolicy.TotalTimeout = 0          //let socket time it out.
+	dev_size_exp := as.ExpDeviceSize()
+	mem_size_exp := as.ExpMemorySize()
+
+	// Since the only operations are deemed 'Read Op' this will be a no-op. The writePolicy is demanded by the client driver anyway.
+	operations := []*as.Operation{
+		as.ExpReadOp("devsize", dev_size_exp, as.ExpReadFlagDefault),
+		as.ExpReadOp("memsize", mem_size_exp, as.ExpReadFlagDefault),
+	}
+	return operations, writePolicy
+}
+
+func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operation, policy *as.WritePolicy) (float64, float64, error) {
+	// Apply the expression to a record
+	record, err := client.Operate(policy, key, operations...)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Print the result
+	memsize, mok := record.Bins["memsize"].(int)
+	if !mok {
+		logrus.Error("Could not convert 'memsize' to int")
+	}
+
+	devsize, dok := record.Bins["devsize"].(int)
+	if !dok {
+		logrus.Error("Could not convert 'devize' to int")
+	}
+
+	// return it as KiB
+	return float64(devsize / 1024), float64(memsize / 1024), err
+}
+
 // simple function to take a human duration input like 1m20s and return a time.Duration output
 func parseDur(dur string) time.Duration {
 	parsedDur, err := time.ParseDuration(dur)
@@ -315,7 +356,11 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	recs, _ := client.ScanNode(scanpol, localNode, namespace, set)
 	total := 0
 	totalInspected := 0
-	resultMap[namespaceSet] = make(map[uint32]int)
+
+	// if we intend to export mem/device size histograms, we'll need these vars
+	if element.KByteHistogram["memorySize"] || element.KByteHistogram["deviceSize"] {
+		measureOps, opPolicy = initRecSizeVars()
+	}
 	for rec := range recs.Results() {
 		if config.Service.Verbose {
 			if total%element.ReportCount == 0 { // this is after the scan is done. may not be valuable other than for debugging.
@@ -331,7 +376,30 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 			} else {
 				total++
 				expireTime := rec.Record.Expiration
-				resultMap[namespaceSet][expireTime]++
+				ns_set_to_histograms[namespaceSet]["counts"].WithLabelValues().Observe(float64(expireTime))
+
+				// handle byte histogram
+				// need to do an extra operation here unfortunately
+				// This should result in a no-op using "Operation" with "Expression" to return metadata only.
+				// should not incur IO expense.
+				if element.KByteHistogram["memorySize"] || element.KByteHistogram["deviceSize"] {
+					devsize, memsize, err := measureRecordSize(client, rec.Record.Key, measureOps, opPolicy)
+					if err != nil {
+						logrus.Errorf("Failure fetching record size. Err: %v", err)
+					}
+					if element.KByteHistogram["deviceSize"] {
+						// if this is 0, we wont even create the histogram. neat. hopefully that doesnt confuse people in the future
+						for i := 0.0; i < devsize; i += element.KByteHistogramResolution {
+							ns_set_to_histograms[namespaceSet]["bytes"].WithLabelValues("device").Observe(float64(expireTime))
+						}
+					}
+					if element.KByteHistogram["memorySize"] {
+						// same here if memsize is 0, we wont get a histogram.
+						for i := 0.0; i < memsize; i += element.KByteHistogramResolution {
+							ns_set_to_histograms[namespaceSet]["bytes"].WithLabelValues("memory").Observe(float64(expireTime))
+						}
+					}
+				}
 			}
 		} else {
 			logrus.Error("Error while inspecting scan results: ", rec.Err)
@@ -343,14 +411,6 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 			recs.Close() // close the record set to stop the query
 			break
 		}
-	}
-
-	for key := range resultMap[namespaceSet] {
-		num_records := float64(resultMap[namespaceSet][key])
-		for i := 0.0; i < num_records; i++ {
-			ns_set_to_histograms[namespace+"_"+set]["counts"].WithLabelValues().Observe(float64(key))
-		}
-
 	}
 	logrus.WithFields(logrus.Fields{
 		"total(records exported)": total,
