@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var buildVersion = "3.0.1"
+var buildVersion = "3.1.0"
 var configFile = flag.String("configFile", "/etc/ttl-aerospike-exporter.yaml", "The yaml config file for the exporter")
 var ns_set_to_histograms = make(map[string]map[string]*prometheus.HistogramVec)
 
