@@ -20,6 +20,7 @@ monitor:
     policyTotalTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     policySocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     RecordsPerSecond: 0 # Limit the records per second returned by Aerospike server to the exporter. 0 means no limit.
+    # width/start/numberOfBucketsToExport can only be used if staticBucketList is undefined, and vice versa.
     staticBucketList: #You can append suffix "s", "h", "d". Do not mix suffixes per array.
       - 160d
       - 170d
@@ -32,13 +33,13 @@ monitor:
     # width/start/numberOfBucketsToExport can only be used if staticBucketList is undefined, and vice versa.
     bucketWidth: 10d #You can append suffix "s", "h", "d". Do not use a different suffix than width, or it will throw an exception.
     bucketStart: 180d #You can append suffix "s", "h", "d". Do not use a different suffix than width, or it will throw an exception.
-    numberOfBucketsToExport: 10 #140+ 10*10=up to 240
+    numberOfBucketsToExport: 10 # your last bucket will be: bucketStart + (bucketWidth * numberOfBucketsToExporter)
     reportCount: 300000  # if running verbose, How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
     scanTotalTimeout: 20m  # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
     scanSocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     policyTotalTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     policySocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
-    RecordsPerSecond: 100 # not sure if this works on older versions, but it does right now as of v5. 0 means no limit.
+    RecordsPerSecond: 100 # Utilizes the scan policy to limit RPS.
     ## KiB exports
     # note on 'resolution here: this can have drastic perf implications
     #  This directly affects how many times we call histogram.Observe.
