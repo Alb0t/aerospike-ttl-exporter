@@ -4,6 +4,8 @@ import (
 	"flag"
 	"io/ioutil"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/carlescere/scheduler"
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,6 +16,7 @@ import (
 var buildVersion = "3.1.2"
 var configFile = flag.String("configFile", "/etc/ttl-aerospike-exporter.yaml", "The yaml config file for the exporter")
 var ns_set_to_histograms = make(map[string]map[string]*prometheus.HistogramVec)
+var ns_set_to_ttl_unit = make(map[string]map[string]int)
 
 var buildInfo = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
@@ -70,9 +73,9 @@ type monconf struct {
 	Recordcount              int             `yaml:"recordCount,omitempty"`
 	ScanPercent              float64         `yaml:"scanPercent,omitempty"`
 	NumberOfBucketsToExport  int             `yaml:"numberOfBucketsToExport,omitempty"`
-	BucketWidth              int             `yaml:"bucketWidth,omitempty"`
-	BucketStart              int             `yaml:"bucketStart,omitempty"`
-	StaticBucketList         []float64       `yaml:"staticBucketList,omitempty"`
+	BucketWidth              string          `yaml:"bucketWidth,omitempty"`
+	BucketStart              string          `yaml:"bucketStart,omitempty"`
+	StaticBucketList         []string        `yaml:"staticBucketList,omitempty"`
 	ReportCount              int             `yaml:"reportCount,omitempty"`
 	ScanTotalTimeout         string          `yaml:"scanTotalTimeout"`
 	ScanSocketTimeout        string          `yaml:"scanSocketTimeout"`
@@ -95,6 +98,51 @@ func (c *conf) setConf() {
 	}
 }
 
+func parseTimeValues(arr []string) ([]float64, string, int) {
+	if len(arr) == 0 {
+		log.Fatal("Empty static bucket list?")
+	}
+
+	// Extract the unit from the first string to ensure consistency
+	unit := arr[0][len(arr[0])-1:]
+
+	// Check all strings in the array to ensure they use the same unit
+	for _, s := range arr {
+		if !strings.HasSuffix(s, string(unit)) {
+			log.Fatal("Only 1 time suffix supported at a time, cannot be mixed.")
+		}
+	}
+
+	// Parse the numerical parts
+	var values []float64
+	for _, s := range arr {
+		val, err := strconv.ParseFloat(s[:len(s)-1], 64)
+		if err != nil {
+			log.Fatal("String conversion to float failure")
+		}
+		values = append(values, val)
+	}
+
+	// Convert the unit to its descriptive form
+	var unitDesc string
+	var secondsPerUnit int
+	switch unit {
+	case "d":
+		unitDesc = "days"
+		secondsPerUnit = 86400
+	case "h":
+		unitDesc = "hours"
+		secondsPerUnit = 3600
+	case "s":
+		unitDesc = "seconds"
+		secondsPerUnit = 1
+	default:
+		log.Fatal("Unknown unit used")
+	}
+
+	return values, unitDesc, secondsPerUnit
+}
+
 func init() {
 	config.setConf()
 	log.SetFormatter(&log.TextFormatter{
@@ -113,23 +161,29 @@ func init() {
 		histogramConf := config.Monitor[histogramConfIndex]
 		namespace := histogramConf.Namespace
 		set := histogramConf.Set
-		var buckets []float64
 		number_of_buckets := histogramConf.NumberOfBucketsToExport
-		bucket_width := float64(histogramConf.BucketWidth)
-		bucket_start := float64(histogramConf.BucketStart)
 
+		var buckets []float64
+		var unit_modifier int
+		var ttl_unit string
 		// buckets definitions
 		if len(histogramConf.StaticBucketList) > 0 {
-			if number_of_buckets != 0 || bucket_width != 0 { // cant check that bucket_start is not 0 because thats a reasonable start value.
+			if number_of_buckets != 0 || histogramConf.BucketWidth != "" { // cant check that bucket_start is not 0 because thats a reasonable start value.
 				log.Fatalf("Static list of buckets chosen for %s.%s but bucket count or bucket width defined.", namespace, set)
 			}
-			// should be using static buckets if we are still here.
-			buckets = histogramConf.StaticBucketList
+
+			// drop "d", "s", "h"
+			buckets, ttl_unit, unit_modifier = parseTimeValues(histogramConf.StaticBucketList)
 		} else {
+			var start_and_width []float64
+			start_and_width, ttl_unit, unit_modifier = parseTimeValues([]string{histogramConf.BucketStart, histogramConf.BucketWidth})
+			bucket_start := start_and_width[0]
+			bucket_width := start_and_width[1]
 			buckets = prometheus.LinearBuckets(bucket_start, bucket_width, number_of_buckets)
 		}
 
 		histograms := make(map[string]*prometheus.HistogramVec)
+		ttl_units := make(map[string]int)
 
 		if histogramConf.KByteHistogram["deviceSize"] || histogramConf.KByteHistogram["memorySize"] {
 			expirationTTLBytesHist := prometheus.NewHistogramVec(
@@ -138,11 +192,12 @@ func init() {
 					Name:        "kib_hist",
 					Help:        "Histogram of how many bytes fall into each ttl bucket. Memory will be the in-memory data size and does not include PI or SI.",
 					Buckets:     buckets,
-					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set},
+					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set, "ttlUnit": ttl_unit},
 				}, []string{"storage_type"},
 			)
 			prometheus.MustRegister(expirationTTLBytesHist)
 			histograms["bytes"] = expirationTTLBytesHist
+			ttl_units["modifier"] = unit_modifier
 		}
 
 		if true {
@@ -152,15 +207,17 @@ func init() {
 					Name:        "counts_hist",
 					Help:        "Histogram of how many records fall into each ttl bucket.",
 					Buckets:     buckets,
-					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set},
+					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set, "ttlUnit": ttl_unit},
 				}, []string{},
 			)
 			prometheus.MustRegister(expirationTTLCountsHist)
 			histograms["counts"] = expirationTTLCountsHist
+			ttl_units["modifier"] = unit_modifier
 		}
 
 		// Add the HistogramVec to the inner map
 		ns_set_to_histograms[namespace+":"+set] = histograms
+		ns_set_to_ttl_unit[namespace+":"+set] = ttl_units
 
 		//now we can call something like ns_set_to_histograms[mynamespace_myset].Observe in the future.
 	}

@@ -375,7 +375,7 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 				// too noisy disabled logging on this
 			} else {
 				total++
-				expireTime := rec.Record.Expiration
+				expireTime := rec.Record.Expiration / uint32(ns_set_to_ttl_unit[namespaceSet]["modifier"])
 				ns_set_to_histograms[namespaceSet]["counts"].WithLabelValues().Observe(float64(expireTime))
 
 				// handle byte histogram

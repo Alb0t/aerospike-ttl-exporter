@@ -20,17 +20,18 @@ monitor:
     policyTotalTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     policySocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     RecordsPerSecond: 0 # Limit the records per second returned by Aerospike server to the exporter. 0 means no limit.
-    staticBucketList: #these are in seconds, so the below sets up 4 buckets. 160d bucket, 170, 181, and 220d.
-      - 13824000 #160*86400 
-      - 14688000 #170*86400
-      - 15638400 #181*86400
-      - 19008000 #220*86400
+    staticBucketList: #You can append suffix "s", "h", "d". Do not mix suffixes per array.
+      - 160d
+      - 170d
+      - 181d
+      - 220d
   - namespace: someothernamespace
     set: null  # what setname to scan? use `null` (without ticks) to just report on a namespace level
     recordCount: -1  # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
     scanPercent: 1.0  # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
-    bucketWidth: 864000 #10-day width (seconds)
-    bucketStart: 120960000 #140 (seconds)
+    # width/start/numberOfBucketsToExport can only be used if staticBucketList is undefined, and vice versa.
+    bucketWidth: 10d #You can append suffix "s", "h", "d". Do not use a different suffix than width, or it will throw an exception.
+    bucketStart: 180d #You can append suffix "s", "h", "d". Do not use a different suffix than width, or it will throw an exception.
     numberOfBucketsToExport: 10 #140+ 10*10=up to 240
     reportCount: 300000  # if running verbose, How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
     scanTotalTimeout: 20m  # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
@@ -44,7 +45,7 @@ monitor:
     #  ex. If you have a ~128,000 byte size record and resolution is set to 0.001 we will call observe 128,000 times.
     # this does mean we lose some resolution on how large the records are, because they'll be rounded down by 'n' bytes.
     # value is in KiB, recommend starting at something like 0.334 so our resolution will be around 334 bytes
-    kbyteHistogramResolution: 0.334 
+    kbyteHistogramResolution: 0.334
     kbyteHistogram: 
       deviceSize: true
       memorySize: false
