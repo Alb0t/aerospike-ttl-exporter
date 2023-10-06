@@ -297,8 +297,16 @@ func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operatio
 		logrus.Error("Could not convert 'devize' to int")
 	}
 
+	devsize_kb := float64(devsize) / 1024.0
+	memsize_kb := float64(memsize) / 1024.0
+
+	// if config.Service.Verbose {
+	// 	logrus.Debug("Found devsize: ", devsize, " converted to KiB -> ", devsize_kb)
+	// 	logrus.Debug("Found memsize: ", memsize, " converted to KiB -> ", memsize_kb)
+	// }
+
 	// return it as KiB
-	return float64(devsize / 1024), float64(memsize / 1024), err
+	return devsize_kb, memsize_kb, err
 }
 
 // simple function to take a human duration input like 1m20s and return a time.Duration output
