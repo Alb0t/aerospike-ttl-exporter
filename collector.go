@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -13,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var buildVersion = "4.0.4"
+var buildVersion = "4.0.6"
 var configFile = flag.String("configFile", "/etc/ttl-aerospike-exporter.yaml", "The yaml config file for the exporter")
 var ns_set_to_histograms = make(map[string]map[string]*prometheus.HistogramVec)
 var ns_set_to_ttl_unit = make(map[string]map[string]int)
@@ -88,7 +87,7 @@ type monconf struct {
 
 func (c *conf) setConf() {
 	flag.Parse()
-	yamlFile, err := ioutil.ReadFile(*configFile)
+	yamlFile, err := os.ReadFile(*configFile)
 	if err != nil {
 		log.Fatal("Failed to read configfile: ", *configFile)
 	}
