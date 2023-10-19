@@ -12,7 +12,7 @@ import (
 
 	as "github.com/aerospike/aerospike-client-go/v6"
 	asl "github.com/aerospike/aerospike-client-go/v6/logger"
-
+	"github.com/aerospike/aerospike-client-go/v6/types"
 	logrus "github.com/sirupsen/logrus"
 )
 
@@ -115,6 +115,10 @@ func countSet(n *as.Node, ns string, set string) int64 {
 	if set != "" {
 		cmd := fmt.Sprintf("sets/%s/%s", ns, set)
 		objCount := getCount(n, "objects", cmd, true)
+		if repl == 0 {
+			logrus.Warn("RF=0? Maybe namespace is typed wrong.")
+			return 0
+		}
 		return (objCount / repl)
 	} else {
 		// this means we want to get the nullset which sucks.
@@ -284,7 +288,14 @@ func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operatio
 	// Apply the expression to a record
 	record, err := client.Operate(policy, key, operations...)
 	if err != nil {
-		log.Fatal(err)
+
+		aerr, ok := err.(*as.AerospikeError)
+		if ok && aerr.ResultCode == types.KEY_NOT_FOUND_ERROR {
+			logrus.Debug("Key not found error. Record was probably deleted or evicted/expired between scan time and metadata read time.")
+			return 0, 0, err
+		} else {
+			logrus.Fatal(err)
+		}
 	}
 	// Print the result
 	memsize, mok := record.Bins["memsize"].(int)
@@ -297,8 +308,16 @@ func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operatio
 		logrus.Error("Could not convert 'devize' to int")
 	}
 
+	devsize_kb := float64(devsize) / 1024.0
+	memsize_kb := float64(memsize) / 1024.0
+
+	// if config.Service.Verbose {
+	// 	logrus.Debug("Found devsize: ", devsize, " converted to KiB -> ", devsize_kb)
+	// 	logrus.Debug("Found memsize: ", memsize, " converted to KiB -> ", memsize_kb)
+	// }
+
 	// return it as KiB
-	return float64(devsize / 1024), float64(memsize / 1024), err
+	return devsize_kb, memsize_kb, err
 }
 
 // simple function to take a human duration input like 1m20s and return a time.Duration output

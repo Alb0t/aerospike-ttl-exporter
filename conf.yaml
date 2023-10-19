@@ -41,11 +41,13 @@ monitor:
     policySocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
     RecordsPerSecond: 100 # Utilizes the scan policy to limit RPS.
     ## KiB exports
-    # note on 'resolution here: this can have drastic perf implications
+    # WARNING: Resolution will have drastic perf implications
     #  This directly affects how many times we call histogram.Observe.
-    #  ex. If you have a ~128,000 byte size record and resolution is set to 0.001 we will call observe 128,000 times.
+    #  If you have a ~128,000 byte size record and resolution is set to 0.001 we will call observe 128,000 times.
     # this does mean we lose some resolution on how large the records are, because they'll be rounded down by 'n' bytes.
-    # value is in KiB, recommend starting at something like 0.334 so our resolution will be around 334 bytes
+    # value is in KiB, recommend starting at something like 0.334 so our resolution will be around 334 bytes and we will call observe 334x less.
+    # This also artificially deflates the number, so you will have to scale it up. If we are observing 334x less data, you will need to 334x the final value from the histograms - though they should be accurate as a distribution.
+    #  There is no good way around this.
     kbyteHistogramResolution: 0.334
     kbyteHistogram: 
       deviceSize: true
