@@ -292,7 +292,7 @@ func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operatio
 		aerr, ok := err.(*as.AerospikeError)
 		if ok && aerr.ResultCode == types.KEY_NOT_FOUND_ERROR {
 			logrus.Debug("Key not found error. Record was probably deleted or evicted/expired between scan time and metadata read time.")
-			return 0, 0, err
+			return 0, 0, as.ErrKeyNotFound
 		} else {
 			logrus.Fatal(err)
 		}
@@ -404,7 +404,9 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 				if element.KByteHistogram["memorySize"] || element.KByteHistogram["deviceSize"] {
 					devsize, memsize, err := measureRecordSize(client, rec.Record.Key, measureOps, opPolicy)
 					if err != nil {
-						logrus.Errorf("Failure fetching record size. Err: %v", err)
+						if err != as.ErrKeyNotFound { // we debug log this early, no need to log it again and its not fatal.
+							logrus.Errorf("Failure fetching record size. Err: %v", err)
+						}
 					}
 					if element.KByteHistogram["deviceSize"] {
 						// if this is 0, we wont even create the histogram. neat. hopefully that doesnt confuse people in the future
