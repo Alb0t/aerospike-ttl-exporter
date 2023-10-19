@@ -12,7 +12,7 @@ import (
 
 	as "github.com/aerospike/aerospike-client-go/v6"
 	asl "github.com/aerospike/aerospike-client-go/v6/logger"
-
+	"github.com/aerospike/aerospike-client-go/v6/types"
 	logrus "github.com/sirupsen/logrus"
 )
 
@@ -115,6 +115,10 @@ func countSet(n *as.Node, ns string, set string) int64 {
 	if set != "" {
 		cmd := fmt.Sprintf("sets/%s/%s", ns, set)
 		objCount := getCount(n, "objects", cmd, true)
+		if repl == 0 {
+			logrus.Warn("RF=0? Maybe namespace is typed wrong.")
+			return 0
+		}
 		return (objCount / repl)
 	} else {
 		// this means we want to get the nullset which sucks.
@@ -284,7 +288,14 @@ func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operatio
 	// Apply the expression to a record
 	record, err := client.Operate(policy, key, operations...)
 	if err != nil {
-		log.Fatal(err)
+
+		aerr, ok := err.(*as.AerospikeError)
+		if ok && aerr.ResultCode == types.KEY_NOT_FOUND_ERROR {
+			logrus.Debug("Key not found error. Record was probably deleted or evicted/expired between scan time and metadata read time.")
+			return 0, 0, err
+		} else {
+			logrus.Fatal(err)
+		}
 	}
 	// Print the result
 	memsize, mok := record.Bins["memsize"].(int)
