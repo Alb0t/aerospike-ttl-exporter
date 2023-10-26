@@ -71,7 +71,8 @@ histogram_quantile(0.10,
 # Result: 26.2
 ```
 
-Example output:
+
+# Example exporter output:
 ```
 ....
 aerospike_ttl_build_info{version="3.1.0"} 1
