@@ -7,11 +7,69 @@ tl;dr - this allows us to measure storage capacity in a situation where we store
 
 TTL (time-to-live) on a record dictates when the record will expire, and if evicting we need to measure the lowest bucket and trends of these ttls.
 
-The data currently exported by Aerospike histogram dumps is not accurate enough to give us the granularity we need to look at these marks accurately. The histogram exports 100 buckets, always, and depending on the min/max of that local system we can get wildly different metrics between systems. This also means that the accuracy of these metrics can be very low, and further making the problem worse - we do not have a way to line up the 'bucket' boundaries of the exported histograms, so we have to decrease accuracy further by lumping the ranges into different buckets that line up in grafana.
+The data currently exported by Aerospike histogram dumps is not accurate enough to give us the granularity we need to look at these marks accurately. The histogram exports 100 buckets, always, and depending on the min/max of that local system we can get wildly different metrics between systems. This also means that the accuracy of these metrics can be very low, and further making the problem worse - we do not have a way to line up the 'bucket' boundaries of the exported histograms, so we have to decrease accuracy further by lumping the ranges into different buckets that line up in grafana. The built-in feature also only gives us record counts, and we are unable to see a distribution of size across various ttl buckets.
 
 # Solution:
-* Write a custom exporter that takes a small 1% sample on each server on a scheduled task, and exports that data to prometheus.
+Write a custom exporter that takes a sample on each server on a scheduled task, and exports that data to prometheus.
 
+This allows us to ask questions like: 
+## How large are the users in the fresh TTL range?
+```
+# Scenario: default-ttl=33d
+histogram_quantile(0.50, sum(rate(aerospike_ttl_kib_hist_bucket{namespace="myns"}[$__rate_interval])) by (le))
+# Query result: 28.6
+# Interpreted: 50% of the data has been written in the last (33-28.6) 4.4 days
+```
+
+## How many records are in the fresh TTL range?
+```
+# Scenario: default-ttl=33d
+histogram_quantile(0.50, sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns"}[$__rate_interval])) by (le))
+# Query result: 22.1
+# Interpreted: 50% of the data has been written in the last (33-22.1) 10.9 days
+```
+
+## What percentage of records will expire in a week?
+```
+# We divide the number of records (counts) that will expire <=7 days, but the "+Inf' bucket which includes everything.
+sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns",le="7",ttlUnit="days"}[$__rate_interval]))*100
+/
+sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns",le="+Inf"}[$__rate_interval]))
+
+# Result: 13.1
+```
+
+## What percentage of data will expire in a week?
+```
+# We divide the number of records (counts) that will expire <=7 days, but the "+Inf' bucket which includes everything.
+sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns",le="7",ttlUnit="days"}[$__rate_interval]))*100
+/
+sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns",le="+Inf"}[$__rate_interval]))
+
+# Result: 1.4
+```
+
+## Conclusions about above queries: We have an abornmal distribution where our largest records are updated more often!
+
+## How will my evict-void-time change if I evict 10% of my data earlier?
+This is useful if you are already evicting and you need to understand how changes will affect your eviction time like:
+* records will become 10% larger
+* we will lose 10% of our capacity
+* we will reduce my hwm by 10% of its current value (ex.. 50 to 45%)
+
+How do we forecast those changes?
+```
+histogram_quantile(0.10, 
+    sum(
+        rate(
+            aerospike_ttl_kib_hist_bucket{namespace="myns"}
+            [$__rate_interval]
+        )
+    ) by (le)
+)
+
+# Result: 26.2
+```
 
 Example output:
 ```
