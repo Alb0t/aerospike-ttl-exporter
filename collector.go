@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -88,7 +87,7 @@ type monconf struct {
 
 func (c *conf) setConf() {
 	flag.Parse()
-	yamlFile, err := ioutil.ReadFile(*configFile)
+	yamlFile, err := os.ReadFile(*configFile)
 	if err != nil {
 		log.Fatal("Failed to read configfile: ", *configFile)
 	}

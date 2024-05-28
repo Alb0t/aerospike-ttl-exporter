@@ -48,7 +48,7 @@ monitor:
     # value is in KiB, recommend starting at something like 0.334 so our resolution will be around 334 bytes and we will call observe 334x less.
     # This also artificially deflates the number, so you will have to scale it up. If we are observing 334x less data, you will need to 334x the final value from the histograms - though they should be accurate as a distribution.
     #  There is no good way around this.
-    kbyteHistogramResolution: 0.334
+    kbyteHistogramResolution: 0.334  # maximum rez 0.001 (1 byte res) which seems to generate more than 30x more compute needs than 0.333
     kbyteHistogram: 
       deviceSize: true
       memorySize: false
