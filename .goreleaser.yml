@@ -7,8 +7,15 @@ before:
     # you may remove this if you don't need go generate
     - go generate ./...
 builds:
-- env:
-  - CGO_ENABLED=0
+- 
+  env:
+    - CGO_ENABLED=0
+  goos:
+    - darwin
+    - linux
+  goarch:
+    - amd64
+    - arm64
 archives:
 - name_template: >-
       {{- .ProjectName }}_
@@ -27,3 +34,15 @@ changelog:
     exclude:
     - '^docs:'
     - '^test:'
+
+nfpms:
+  - id: default
+    package_name: aerospike-ttl-exporter
+    formats:
+      - deb
+      - rpm
+    license: Apache 2.0
+    maintainer: "Albert Autin"
+    vendor: "TTD"
+    homepage: "https://github.com/Alb0t/aerospike-ttl-exporter"
+    description: "Aerospike TTL Exporter"
