@@ -427,8 +427,16 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 						}
 					}
 					if element.KByteHistogram["recordSize"] {
-						for i := 0.0; i < recordsize; i += element.KByteHistogramResolution {
-							ns_set_to_histograms[namespaceSet]["sizes"].WithLabelValues("record").Observe(float64(expireTime))
+						if recordsize != 0 {
+							ns_set_to_histograms[namespaceSet]["sizes"].WithLabelValues("recordsize").Observe(float64(recordsize))
+						}
+
+						if devsize != 0 {
+							ns_set_to_histograms[namespaceSet]["sizes"].WithLabelValues("recordsize").Observe(float64(devsize))
+						}
+
+						if memsize != 0 {
+							ns_set_to_histograms[namespaceSet]["sizes"].WithLabelValues("recordsize").Observe(float64(memsize))
 						}
 					}
 				}

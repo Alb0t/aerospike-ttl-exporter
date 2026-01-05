@@ -83,8 +83,8 @@ type monconf struct {
 	RecordsPerSecond         int             `yaml:"recordsPerSecond"`
 	KByteHistogram           map[string]bool `yaml:"kbyteHistogram,omitempty"`
 	KByteHistogramResolution float64         `yaml:"kbyteHistogramResolution,omitempty"`
-	SizeHistogramBucketMin   int             `yaml:"sizeHistogramBucketCount"`
-	SizeHistogramBucketMax   int             `yaml:"sizeHistogramBucketCount"`
+	SizeHistogramBucketMin   int             `yaml:"sizeHistogramBucketMin"`
+	SizeHistogramBucketMax   int             `yaml:"sizeHistogramBucketMax"`
 	SizeHistogramBucketCount int             `yaml:"sizeHistogramBucketCount"`
 }
 
@@ -226,7 +226,7 @@ func init() {
 					Help:        "Histogram of how many records fall into each ttl bucket.",
 					Buckets:     buckets,
 					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set, "ttlUnit": ttl_unit},
-				}, []string{},
+				}, []string{"metadata_op"},
 			)
 			prometheus.MustRegister(expirationTTLCountsHist)
 			histograms["counts"] = expirationTTLCountsHist
