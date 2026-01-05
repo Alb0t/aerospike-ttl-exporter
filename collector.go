@@ -83,6 +83,9 @@ type monconf struct {
 	RecordsPerSecond         int             `yaml:"recordsPerSecond"`
 	KByteHistogram           map[string]bool `yaml:"kbyteHistogram,omitempty"`
 	KByteHistogramResolution float64         `yaml:"kbyteHistogramResolution,omitempty"`
+	SizeHistogramBucketMin   int             `yaml:"sizeHistogramBucketCount"`
+	SizeHistogramBucketMax   int             `yaml:"sizeHistogramBucketCount"`
+	SizeHistogramBucketCount int             `yaml:"sizeHistogramBucketCount"`
 }
 
 func (c *conf) setConf() {
@@ -184,7 +187,7 @@ func init() {
 		histograms := make(map[string]*prometheus.HistogramVec)
 		ttl_units := make(map[string]int)
 
-		if histogramConf.KByteHistogram["deviceSize"] || histogramConf.KByteHistogram["memorySize"] {
+		if histogramConf.KByteHistogram["deviceSize"] || histogramConf.KByteHistogram["memorySize"] || histogramConf.KByteHistogram["recordSize"] {
 			expirationTTLBytesHist := prometheus.NewHistogramVec(
 				prometheus.HistogramOpts{
 					Namespace:   "aerospike_ttl",
@@ -194,8 +197,24 @@ func init() {
 					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set, "ttlUnit": ttl_unit},
 				}, []string{"storage_type"},
 			)
+			recordOrDataOrMemorySizeBytesHist := prometheus.NewHistogramVec(
+				prometheus.HistogramOpts{
+					Namespace: "aerospike_ttl",
+					Name:      "size_bytes_hist",
+					Help:      "Histogram of device/memory/record sizes of records observed by Aerospike TTL Exporter.",
+					// bucket min value is 1 byte, maximum value is 8 MiB (aerospike max).
+					// number of buckets comes from config file
+					Buckets: prometheus.ExponentialBucketsRange(
+						float64(histogramConf.SizeHistogramBucketMin),
+						float64(histogramConf.SizeHistogramBucketMax),
+						histogramConf.SizeHistogramBucketCount),
+					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set},
+				}, []string{"storage_type"},
+			)
 			prometheus.MustRegister(expirationTTLBytesHist)
+			prometheus.MustRegister(recordOrDataOrMemorySizeBytesHist)
 			histograms["bytes"] = expirationTTLBytesHist
+			histograms["sizes"] = recordOrDataOrMemorySizeBytesHist
 			ttl_units["modifier"] = unit_modifier
 		}
 

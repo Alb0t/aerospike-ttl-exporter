@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	as "github.com/aerospike/aerospike-client-go/v6"
 	asl "github.com/aerospike/aerospike-client-go/v6/logger"
-	"github.com/aerospike/aerospike-client-go/v6/types"
+	as "github.com/aerospike/aerospike-client-go/v8"
+	"github.com/aerospike/aerospike-client-go/v8/types"
 	logrus "github.com/sirupsen/logrus"
 )
 
@@ -273,18 +273,17 @@ func initRecSizeVars() ([]*as.Operation, *as.WritePolicy) {
 	writePolicy.MaxRetries = 10
 	writePolicy.SleepBetweenRetries = 334 //334ms.
 	writePolicy.TotalTimeout = 0          //let socket time it out.
-	dev_size_exp := as.ExpDeviceSize()
-	mem_size_exp := as.ExpMemorySize()
 
 	// Since the only operations are deemed 'Read Op' this will be a no-op. The writePolicy is demanded by the client driver anyway.
 	operations := []*as.Operation{
-		as.ExpReadOp("devsize", dev_size_exp, as.ExpReadFlagDefault),
-		as.ExpReadOp("memsize", mem_size_exp, as.ExpReadFlagDefault),
+		as.ExpReadOp("devsize", as.ExpDeviceSize(), as.ExpReadFlagDefault),
+		as.ExpReadOp("memsize", as.ExpMemorySize(), as.ExpReadFlagDefault),
+		as.ExpReadOp("recordsize", as.ExpRecordSize(), as.ExpReadFlagDefault),
 	}
 	return operations, writePolicy
 }
 
-func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operation, policy *as.WritePolicy) (float64, float64, error) {
+func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operation, policy *as.WritePolicy) (float64, float64, float64, error) {
 	// Apply the expression to a record
 	record, err := client.Operate(policy, key, operations...)
 	if err != nil {
@@ -292,7 +291,7 @@ func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operatio
 		aerr, ok := err.(*as.AerospikeError)
 		if ok && aerr.ResultCode == types.KEY_NOT_FOUND_ERROR {
 			logrus.Debug("Key not found error. Record was probably deleted or evicted/expired between scan time and metadata read time.")
-			return 0, 0, as.ErrKeyNotFound
+			return 0, 0, 0, as.ErrKeyNotFound
 		} else {
 			logrus.Fatal(err)
 		}
@@ -308,8 +307,15 @@ func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operatio
 		logrus.Error("Could not convert 'devize' to int")
 	}
 
+	recordsize, rok := record.Bins["recordsize"].(int)
+
+	if !rok {
+		logrus.Error("Could not convert 'recordsize' to int")
+	}
+
 	devsize_kb := float64(devsize) / 1024.0
 	memsize_kb := float64(memsize) / 1024.0
+	recordsize_kb := float64(recordsize) / 1024.0
 
 	// if config.Service.Verbose {
 	// 	logrus.Debug("Found devsize: ", devsize, " converted to KiB -> ", devsize_kb)
@@ -317,7 +323,7 @@ func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operatio
 	// }
 
 	// return it as KiB
-	return devsize_kb, memsize_kb, err
+	return devsize_kb, memsize_kb, recordsize_kb, err
 }
 
 // simple function to take a human duration input like 1m20s and return a time.Duration output
@@ -401,8 +407,8 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 				// need to do an extra operation here unfortunately
 				// This should result in a no-op using "Operation" with "Expression" to return metadata only.
 				// should not incur IO expense.
-				if element.KByteHistogram["memorySize"] || element.KByteHistogram["deviceSize"] {
-					devsize, memsize, err := measureRecordSize(client, rec.Record.Key, measureOps, opPolicy)
+				if element.KByteHistogram["memorySize"] || element.KByteHistogram["deviceSize"] || element.KByteHistogram["recordSize"] {
+					devsize, memsize, recordsize, err := measureRecordSize(client, rec.Record.Key, measureOps, opPolicy)
 					if err != nil {
 						if err != as.ErrKeyNotFound { // we debug log this early, no need to log it again and its not fatal.
 							logrus.Errorf("Failure fetching record size. Err: %v", err)
@@ -418,6 +424,11 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 						// same here if memsize is 0, we wont get a histogram.
 						for i := 0.0; i < memsize; i += element.KByteHistogramResolution {
 							ns_set_to_histograms[namespaceSet]["bytes"].WithLabelValues("memory").Observe(float64(expireTime))
+						}
+					}
+					if element.KByteHistogram["recordSize"] {
+						for i := 0.0; i < recordsize; i += element.KByteHistogramResolution {
+							ns_set_to_histograms[namespaceSet]["sizes"].WithLabelValues("record").Observe(float64(expireTime))
 						}
 					}
 				}
