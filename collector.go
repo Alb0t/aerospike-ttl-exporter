@@ -209,7 +209,7 @@ func init() {
 						float64(histogramConf.SizeHistogramBucketMax),
 						histogramConf.SizeHistogramBucketCount),
 					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set},
-				}, []string{"storage_type"},
+				}, []string{"metadata_op"},
 			)
 			prometheus.MustRegister(expirationTTLBytesHist)
 			prometheus.MustRegister(recordOrDataOrMemorySizeBytesHist)
@@ -226,7 +226,7 @@ func init() {
 					Help:        "Histogram of how many records fall into each ttl bucket.",
 					Buckets:     buckets,
 					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set, "ttlUnit": ttl_unit},
-				}, []string{"metadata_op"},
+				}, []string{},
 			)
 			prometheus.MustRegister(expirationTTLCountsHist)
 			histograms["counts"] = expirationTTLCountsHist
