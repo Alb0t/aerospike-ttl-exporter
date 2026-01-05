@@ -1,54 +1,38 @@
 ---
 service:
-  listenPort: :9634  # which port the exporter binds on.
-  aerospikeAddr: 127.0.0.1  # for testing purposes, or if for some reason this isnt localhost, what ip do we connect to for aerospike?
-  aerospikePort: 3000 # There is no default, must specify the port aerospike runs on. By default asd runs off port 3000.
-  skipNodeCheck: false # for testing purposes, setting this to true will disable the check that ensures we are only scanning our local node. Never set to true without understanding the consequences.
-  frequencySecs: 1  # how often to pause after finishing updates to all namespaces/sets. Will not cause overlapping scans if set too low.
-  verbose: true  # print debug/verbose logs to stdout.
-  username: foo # username to login to aerospike (Basic auth). omit/comment if auth not enabled.
-  password: bar # password to login with username (basic auth). omit/comment if auth not enabled. Only considered if username is defined.
+  listenPort: :9634
+  aerospikeAddr: 127.0.0.1
+  aerospikePort: 3000
+  skipNodeCheck: false
+  failOnClusterChange: true
+  frequencySecs: 25
+  verbose: false
+  username: admin
+  password: admin
 
 monitor:
-  - namespace: mynamespace
-    set: User  # what setname to scan? use `null` (without ticks) to just report on a namespace level
-    recordCount: 50000  # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
-    scanPercent: 1.1  # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
-    reportCount: 300000  # How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
-    scanTotalTimeout: 20m  # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
-    scanSocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
-    policyTotalTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
-    policySocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
-    RecordsPerSecond: 0 # Limit the records per second returned by Aerospike server to the exporter. 0 means no limit.
-    # width/start/numberOfBucketsToExport can only be used if staticBucketList is undefined, and vice versa.
-    staticBucketList: #You can append suffix "s", "h", "d". Do not mix suffixes per array.
-      - 160d
-      - 170d
-      - 181d
-      - 220d
-  - namespace: someothernamespace
-    set: null  # what setname to scan? use `null` (without ticks) to just report on a namespace level
-    recordCount: -1  # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
-    scanPercent: 1.0  # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
-    # width/start/numberOfBucketsToExport can only be used if staticBucketList is undefined, and vice versa.
-    bucketWidth: 10d #You can append suffix "s", "h", "d". Do not use a different suffix than width, or it will throw an exception.
-    bucketStart: 180d #You can append suffix "s", "h", "d". Do not use a different suffix than width, or it will throw an exception.
-    numberOfBucketsToExport: 10 # your last bucket will be: bucketStart + (bucketWidth * numberOfBucketsToExporter)
-    reportCount: 300000  # if running verbose, How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
-    scanTotalTimeout: 20m  # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
-    scanSocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
-    policyTotalTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
-    policySocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
-    RecordsPerSecond: 100 # Utilizes the scan policy to limit RPS.
-    ## KiB exports
-    # WARNING: Resolution will have drastic perf implications
-    #  This directly affects how many times we call histogram.Observe.
-    #  If you have a ~128,000 byte size record and resolution is set to 0.001 we will call observe 128,000 times.
-    # this does mean we lose some resolution on how large the records are, because they'll be rounded down by 'n' bytes.
-    # value is in KiB, recommend starting at something like 0.334 so our resolution will be around 334 bytes and we will call observe 334x less.
-    # This also artificially deflates the number, so you will have to scale it up. If we are observing 334x less data, you will need to 334x the final value from the histograms - though they should be accurate as a distribution.
-    #  There is no good way around this.
-    kbyteHistogramResolution: 0.334  # maximum rez 0.001 (1 byte res) which seems to generate more than 30x more compute needs than 0.333
-    kbyteHistogram: 
+  - namespace: local-test
+    set: robert
+    staticBucketList:
+      - 1d
+      - 2d
+      - 3d
+      - 6d
+      - 7d
+      - 10d
+    recordCount: 1000
+    scanPercent: 1
+    exportPercentages: true
+    exportRecordCount: true
+    reportCount: 300000
+    recordModulo: 1000
+    scanPriority: 3
+    recordsPerSecond: 1000
+    scanTotalTimeout: 20m
+    scanSocketTimeout: 20m
+    policyTotalTimeout: 20m
+    policySocketTimeout: 20m
+    kbyteHistogramResolution: 0.333
+    kbyteHistogram:
       deviceSize: true
-      memorySize: false
+      memorySize: true
