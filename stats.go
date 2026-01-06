@@ -276,35 +276,23 @@ func initRecSizeVars() ([]*as.Operation, *as.WritePolicy) {
 
 	// Since the only operations are deemed 'Read Op' this will be a no-op. The writePolicy is demanded by the client driver anyway.
 	operations := []*as.Operation{
-		as.ExpReadOp("devsize", as.ExpDeviceSize(), as.ExpReadFlagDefault),
-		as.ExpReadOp("memsize", as.ExpMemorySize(), as.ExpReadFlagDefault),
 		as.ExpReadOp("recordsize", as.ExpRecordSize(), as.ExpReadFlagDefault),
 	}
 	return operations, writePolicy
 }
 
-func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operation, policy *as.WritePolicy) (float64, float64, float64, error) {
+func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operation, policy *as.WritePolicy) (float64, error) {
 	// Apply the expression to a record
 	record, err := client.Operate(policy, key, operations...)
-	if err != nil {
 
+	if err != nil {
 		aerr, ok := err.(*as.AerospikeError)
 		if ok && aerr.ResultCode == types.KEY_NOT_FOUND_ERROR {
 			logrus.Debug("Key not found error. Record was probably deleted or evicted/expired between scan time and metadata read time.")
-			return 0, 0, 0, as.ErrKeyNotFound
+			return 0, as.ErrKeyNotFound
 		} else {
 			logrus.Fatal(err)
 		}
-	}
-	// Print the result
-	memsize, mok := record.Bins["memsize"].(int)
-	if !mok {
-		logrus.Error("Could not convert 'memsize' to int")
-	}
-
-	devsize, dok := record.Bins["devsize"].(int)
-	if !dok {
-		logrus.Error("Could not convert 'devize' to int")
 	}
 
 	recordsize, rok := record.Bins["recordsize"].(int)
@@ -313,8 +301,6 @@ func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operatio
 		logrus.Error("Could not convert 'recordsize' to int")
 	}
 
-	devsize_kb := float64(devsize) / 1024.0
-	memsize_kb := float64(memsize) / 1024.0
 	recordsize_kb := float64(recordsize) / 1024.0
 
 	// if config.Service.Verbose {
@@ -323,7 +309,7 @@ func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operatio
 	// }
 
 	// return it as KiB
-	return devsize_kb, memsize_kb, recordsize_kb, err
+	return recordsize_kb, err
 }
 
 // simple function to take a human duration input like 1m20s and return a time.Duration output
@@ -383,7 +369,7 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	totalInspected := 0
 
 	// if we intend to export mem/device size histograms, we'll need these vars
-	if element.KByteHistogram["memorySize"] || element.KByteHistogram["deviceSize"] {
+	if element.KByteHistogramEnabled {
 		measureOps, opPolicy = initRecSizeVars()
 	}
 	for rec := range recs.Results() {
@@ -403,41 +389,24 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 				expireTime := rec.Record.Expiration / uint32(ns_set_to_ttl_unit[namespaceSet]["modifier"])
 				ns_set_to_histograms[namespaceSet]["counts"].WithLabelValues().Observe(float64(expireTime))
 
-				// handle byte histogram
-				// need to do an extra operation here unfortunately
 				// This should result in a no-op using "Operation" with "Expression" to return metadata only.
 				// should not incur IO expense.
-				if element.KByteHistogram["memorySize"] || element.KByteHistogram["deviceSize"] || element.KByteHistogram["recordSize"] {
-					devsize, memsize, recordsize, err := measureRecordSize(client, rec.Record.Key, measureOps, opPolicy)
-					if err != nil {
-						if err != as.ErrKeyNotFound { // we debug log this early, no need to log it again and its not fatal.
-							logrus.Errorf("Failure fetching record size. Err: %v", err)
-						}
+				recordsize, err := measureRecordSize(client, rec.Record.Key, measureOps, opPolicy)
+				if err != nil {
+					if err != as.ErrKeyNotFound { // we debug log this early, no need to log it again and its not fatal.
+						logrus.Errorf("Failure fetching record size. Err: %v", err)
 					}
-					if element.KByteHistogram["deviceSize"] {
-						// if this is 0, we wont even create the histogram. neat. hopefully that doesnt confuse people in the future
-						for i := 0.0; i < devsize; i += element.KByteHistogramResolution {
-							ns_set_to_histograms[namespaceSet]["bytes"].WithLabelValues("device").Observe(float64(expireTime))
-						}
-					}
-					if element.KByteHistogram["memorySize"] {
-						// same here if memsize is 0, we wont get a histogram.
-						for i := 0.0; i < memsize; i += element.KByteHistogramResolution {
-							ns_set_to_histograms[namespaceSet]["bytes"].WithLabelValues("memory").Observe(float64(expireTime))
-						}
-					}
-					if element.KByteHistogram["recordSize"] {
-						if recordsize != 0 {
-							ns_set_to_histograms[namespaceSet]["sizes"].WithLabelValues("recordsize").Observe(float64(recordsize))
-						}
+				}
 
-						if devsize != 0 {
-							ns_set_to_histograms[namespaceSet]["sizes"].WithLabelValues("recordsize").Observe(float64(devsize))
-						}
+				if element.KByteHistogramEnabled {
+					for i := 0.0; i < recordsize; i += element.KByteHistogramResolution {
+						ns_set_to_histograms[namespaceSet]["bytes"].WithLabelValues("recordsize").Observe((float64(expireTime)))
+					}
+				}
 
-						if memsize != 0 {
-							ns_set_to_histograms[namespaceSet]["sizes"].WithLabelValues("recordsize").Observe(float64(memsize))
-						}
+				if element.SizeHistogramEnabled {
+					if recordsize != 0 {
+						ns_set_to_histograms[namespaceSet]["sizes"].WithLabelValues("recordsize").Observe(float64(recordsize))
 					}
 				}
 			}

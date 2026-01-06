@@ -67,25 +67,26 @@ type serviceConf struct {
 }
 
 type monconf struct {
-	Namespace                string          `yaml:"namespace"`
-	Set                      string          `yaml:"set"`
-	Recordcount              int             `yaml:"recordCount,omitempty"`
-	ScanPercent              float64         `yaml:"scanPercent,omitempty"`
-	NumberOfBucketsToExport  int             `yaml:"numberOfBucketsToExport,omitempty"`
-	BucketWidth              string          `yaml:"bucketWidth,omitempty"`
-	BucketStart              string          `yaml:"bucketStart,omitempty"`
-	StaticBucketList         []string        `yaml:"staticBucketList,omitempty"`
-	ReportCount              int             `yaml:"reportCount,omitempty"`
-	ScanTotalTimeout         string          `yaml:"scanTotalTimeout"`
-	ScanSocketTimeout        string          `yaml:"scanSocketTimeout"`
-	PolicyTotalTimeout       string          `yaml:"policyTotalTimeout"`
-	PolicySocketTimeout      string          `yaml:"policySocketTimeout"`
-	RecordsPerSecond         int             `yaml:"recordsPerSecond"`
-	KByteHistogram           map[string]bool `yaml:"kbyteHistogram,omitempty"`
-	KByteHistogramResolution float64         `yaml:"kbyteHistogramResolution,omitempty"`
-	SizeHistogramBucketMin   int             `yaml:"sizeHistogramBucketMin"`
-	SizeHistogramBucketMax   int             `yaml:"sizeHistogramBucketMax"`
-	SizeHistogramBucketCount int             `yaml:"sizeHistogramBucketCount"`
+	Namespace                string   `yaml:"namespace"`
+	Set                      string   `yaml:"set"`
+	Recordcount              int      `yaml:"recordCount,omitempty"`
+	ScanPercent              float64  `yaml:"scanPercent,omitempty"`
+	NumberOfBucketsToExport  int      `yaml:"numberOfBucketsToExport,omitempty"`
+	BucketWidth              string   `yaml:"bucketWidth,omitempty"`
+	BucketStart              string   `yaml:"bucketStart,omitempty"`
+	StaticBucketList         []string `yaml:"staticBucketList,omitempty"`
+	ReportCount              int      `yaml:"reportCount,omitempty"`
+	ScanTotalTimeout         string   `yaml:"scanTotalTimeout"`
+	ScanSocketTimeout        string   `yaml:"scanSocketTimeout"`
+	PolicyTotalTimeout       string   `yaml:"policyTotalTimeout"`
+	PolicySocketTimeout      string   `yaml:"policySocketTimeout"`
+	RecordsPerSecond         int      `yaml:"recordsPerSecond"`
+	KByteHistogramEnabled    bool     `yaml:"kbyteHistogramEnabled,omitempty"`
+	KByteHistogramResolution float64  `yaml:"kbyteHistogramResolution,omitempty"`
+	SizeHistogramBucketMin   int      `yaml:"sizeHistogramBucketMin"`
+	SizeHistogramBucketMax   int      `yaml:"sizeHistogramBucketMax"`
+	SizeHistogramBucketCount int      `yaml:"sizeHistogramBucketCount"`
+	SizeHistogramEnabled     bool     `yaml:"sizeHistogramEnabled"`
 }
 
 func (c *conf) setConf() {
@@ -187,7 +188,7 @@ func init() {
 		histograms := make(map[string]*prometheus.HistogramVec)
 		ttl_units := make(map[string]int)
 
-		if histogramConf.KByteHistogram["deviceSize"] || histogramConf.KByteHistogram["memorySize"] || histogramConf.KByteHistogram["recordSize"] {
+		if histogramConf.KByteHistogramEnabled {
 			expirationTTLBytesHist := prometheus.NewHistogramVec(
 				prometheus.HistogramOpts{
 					Namespace:   "aerospike_ttl",
@@ -197,7 +198,13 @@ func init() {
 					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set, "ttlUnit": ttl_unit},
 				}, []string{"storage_type"},
 			)
-			recordOrDataOrMemorySizeBytesHist := prometheus.NewHistogramVec(
+			prometheus.MustRegister(expirationTTLBytesHist)
+			histograms["bytes"] = expirationTTLBytesHist
+			ttl_units["modifier"] = unit_modifier
+		}
+
+		if histogramConf.SizeHistogramEnabled {
+			recordSizeBytesHist := prometheus.NewHistogramVec(
 				prometheus.HistogramOpts{
 					Namespace: "aerospike_ttl",
 					Name:      "size_bytes_hist",
@@ -211,11 +218,8 @@ func init() {
 					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set},
 				}, []string{"metadata_op"},
 			)
-			prometheus.MustRegister(expirationTTLBytesHist)
-			prometheus.MustRegister(recordOrDataOrMemorySizeBytesHist)
-			histograms["bytes"] = expirationTTLBytesHist
-			histograms["sizes"] = recordOrDataOrMemorySizeBytesHist
-			ttl_units["modifier"] = unit_modifier
+			prometheus.MustRegister(recordSizeBytesHist)
+			histograms["sizes"] = recordSizeBytesHist
 		}
 
 		if true {
