@@ -49,9 +49,7 @@ monitor:
     # This also artificially deflates the number, so you will have to scale it up. If we are observing 334x less data, you will need to 334x the final value from the histograms - though they should be accurate as a distribution.
     #  There is no good way around this.
     kbyteHistogramResolution: 0.334 # maximum rez 0.001 (1 byte res) which seems to generate more than 30x more compute needs than 0.333
-    kbyteHistogram:
-      deviceSize: true
-      memorySize: false
+    kbyteHistogram: true
     ## Bucket Size exports
     # Min/Max/Count are interpolated into prometheus.ExponentialBucketsRange
     # See: https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#ExponentialBucketsRange for details
