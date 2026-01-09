@@ -1,24 +1,24 @@
 ---
 service:
-  listenPort: :9634  # which port the exporter binds on.
-  aerospikeAddr: 127.0.0.1  # for testing purposes, or if for some reason this isnt localhost, what ip do we connect to for aerospike?
+  listenPort: :9634 # which port the exporter binds on.
+  aerospikeAddr: 127.0.0.1 # for testing purposes, or if for some reason this isnt localhost, what ip do we connect to for aerospike?
   aerospikePort: 3000 # There is no default, must specify the port aerospike runs on. By default asd runs off port 3000.
   skipNodeCheck: false # for testing purposes, setting this to true will disable the check that ensures we are only scanning our local node. Never set to true without understanding the consequences.
-  frequencySecs: 1  # how often to pause after finishing updates to all namespaces/sets. Will not cause overlapping scans if set too low.
-  verbose: true  # print debug/verbose logs to stdout.
+  frequencySecs: 1 # how often to pause after finishing updates to all namespaces/sets. Will not cause overlapping scans if set too low.
+  verbose: true # print debug/verbose logs to stdout.
   username: foo # username to login to aerospike (Basic auth). omit/comment if auth not enabled.
   password: bar # password to login with username (basic auth). omit/comment if auth not enabled. Only considered if username is defined.
 
 monitor:
   - namespace: mynamespace
-    set: User  # what setname to scan? use `null` (without ticks) to just report on a namespace level
-    recordCount: 50000  # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
-    scanPercent: 1.1  # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
-    reportCount: 300000  # How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
-    scanTotalTimeout: 20m  # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
-    scanSocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
-    policyTotalTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
-    policySocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
+    set: User # what setname to scan? use `null` (without ticks) to just report on a namespace level
+    recordCount: 50000 # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
+    scanPercent: 1.1 # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
+    reportCount: 300000 # How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
+    scanTotalTimeout: 20m # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
+    scanSocketTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
+    policyTotalTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
+    policySocketTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
     RecordsPerSecond: 0 # Limit the records per second returned by Aerospike server to the exporter. 0 means no limit.
     # width/start/numberOfBucketsToExport can only be used if staticBucketList is undefined, and vice versa.
     staticBucketList: #You can append suffix "s", "h", "d". Do not mix suffixes per array.
@@ -27,18 +27,18 @@ monitor:
       - 181d
       - 220d
   - namespace: someothernamespace
-    set: null  # what setname to scan? use `null` (without ticks) to just report on a namespace level
-    recordCount: -1  # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
-    scanPercent: 1.0  # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
+    set: null # what setname to scan? use `null` (without ticks) to just report on a namespace level
+    recordCount: -1 # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
+    scanPercent: 1.0 # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
     # width/start/numberOfBucketsToExport can only be used if staticBucketList is undefined, and vice versa.
     bucketWidth: 10d #You can append suffix "s", "h", "d". Do not use a different suffix than width, or it will throw an exception.
     bucketStart: 180d #You can append suffix "s", "h", "d". Do not use a different suffix than width, or it will throw an exception.
     numberOfBucketsToExport: 10 # your last bucket will be: bucketStart + (bucketWidth * numberOfBucketsToExporter)
-    reportCount: 300000  # if running verbose, How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
-    scanTotalTimeout: 20m  # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
-    scanSocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
-    policyTotalTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
-    policySocketTimeout: 20m  # https://golang.org/pkg/time/#ParseDuration
+    reportCount: 300000 # if running verbose, How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
+    scanTotalTimeout: 20m # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
+    scanSocketTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
+    policyTotalTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
+    policySocketTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
     RecordsPerSecond: 100 # Utilizes the scan policy to limit RPS.
     ## KiB exports
     # WARNING: Resolution will have drastic perf implications
@@ -48,7 +48,23 @@ monitor:
     # value is in KiB, recommend starting at something like 0.334 so our resolution will be around 334 bytes and we will call observe 334x less.
     # This also artificially deflates the number, so you will have to scale it up. If we are observing 334x less data, you will need to 334x the final value from the histograms - though they should be accurate as a distribution.
     #  There is no good way around this.
-    kbyteHistogramResolution: 0.334  # maximum rez 0.001 (1 byte res) which seems to generate more than 30x more compute needs than 0.333
-    kbyteHistogram: 
-      deviceSize: true
-      memorySize: false
+    kbyteHistogramResolution: 0.334 # maximum rez 0.001 (1 byte res) which seems to generate more than 30x more compute needs than 0.333
+    kbyteHistogram: true
+    ## Bucket Size exports
+    # Min/Max/Count are interpolated into prometheus.ExponentialBucketsRange
+    # See: https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#ExponentialBucketsRange for details
+    # the config provided below creates the following buckets:
+    # "1"
+    # "5.878968493247925"
+    # "34.56227054460177"
+    # "203.19049958682461"
+    # "1194.5505451982474"
+    # "7022.725018812627"
+    # "41286.37912234337"
+    # "242721.32206054562"
+    # "1.4269510050334302e+06"
+    # "8.388999999999996e+06"
+    # "+Inf"
+    sizeHistogramBucketMin: 1 # prometheus won't accept a 0 here, and if the record size is 0 we won't export it anyway
+    sizeHistogramBucketMax: 8389000 # 8 MiB is the max size for any aerospike record in 7.0+
+    sizeHistogramBucketCount: 10 # will create this many buckets evenly distributed between Min and Max

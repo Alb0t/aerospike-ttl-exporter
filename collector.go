@@ -67,22 +67,26 @@ type serviceConf struct {
 }
 
 type monconf struct {
-	Namespace                string          `yaml:"namespace"`
-	Set                      string          `yaml:"set"`
-	Recordcount              int             `yaml:"recordCount,omitempty"`
-	ScanPercent              float64         `yaml:"scanPercent,omitempty"`
-	NumberOfBucketsToExport  int             `yaml:"numberOfBucketsToExport,omitempty"`
-	BucketWidth              string          `yaml:"bucketWidth,omitempty"`
-	BucketStart              string          `yaml:"bucketStart,omitempty"`
-	StaticBucketList         []string        `yaml:"staticBucketList,omitempty"`
-	ReportCount              int             `yaml:"reportCount,omitempty"`
-	ScanTotalTimeout         string          `yaml:"scanTotalTimeout"`
-	ScanSocketTimeout        string          `yaml:"scanSocketTimeout"`
-	PolicyTotalTimeout       string          `yaml:"policyTotalTimeout"`
-	PolicySocketTimeout      string          `yaml:"policySocketTimeout"`
-	RecordsPerSecond         int             `yaml:"recordsPerSecond"`
-	KByteHistogram           map[string]bool `yaml:"kbyteHistogram,omitempty"`
-	KByteHistogramResolution float64         `yaml:"kbyteHistogramResolution,omitempty"`
+	Namespace                string   `yaml:"namespace"`
+	Set                      string   `yaml:"set"`
+	Recordcount              int      `yaml:"recordCount,omitempty"`
+	ScanPercent              float64  `yaml:"scanPercent,omitempty"`
+	NumberOfBucketsToExport  int      `yaml:"numberOfBucketsToExport,omitempty"`
+	BucketWidth              string   `yaml:"bucketWidth,omitempty"`
+	BucketStart              string   `yaml:"bucketStart,omitempty"`
+	StaticBucketList         []string `yaml:"staticBucketList,omitempty"`
+	ReportCount              int      `yaml:"reportCount,omitempty"`
+	ScanTotalTimeout         string   `yaml:"scanTotalTimeout"`
+	ScanSocketTimeout        string   `yaml:"scanSocketTimeout"`
+	PolicyTotalTimeout       string   `yaml:"policyTotalTimeout"`
+	PolicySocketTimeout      string   `yaml:"policySocketTimeout"`
+	RecordsPerSecond         int      `yaml:"recordsPerSecond"`
+	KByteHistogramEnabled    bool     `yaml:"kbyteHistogramEnabled,omitempty"`
+	KByteHistogramResolution float64  `yaml:"kbyteHistogramResolution,omitempty"`
+	SizeHistogramBucketMin   int      `yaml:"sizeHistogramBucketMin"`
+	SizeHistogramBucketMax   int      `yaml:"sizeHistogramBucketMax"`
+	SizeHistogramBucketCount int      `yaml:"sizeHistogramBucketCount"`
+	SizeHistogramEnabled     bool     `yaml:"sizeHistogramEnabled"`
 }
 
 func (c *conf) setConf() {
@@ -184,7 +188,7 @@ func init() {
 		histograms := make(map[string]*prometheus.HistogramVec)
 		ttl_units := make(map[string]int)
 
-		if histogramConf.KByteHistogram["deviceSize"] || histogramConf.KByteHistogram["memorySize"] {
+		if histogramConf.KByteHistogramEnabled {
 			expirationTTLBytesHist := prometheus.NewHistogramVec(
 				prometheus.HistogramOpts{
 					Namespace:   "aerospike_ttl",
@@ -197,6 +201,25 @@ func init() {
 			prometheus.MustRegister(expirationTTLBytesHist)
 			histograms["bytes"] = expirationTTLBytesHist
 			ttl_units["modifier"] = unit_modifier
+		}
+
+		if histogramConf.SizeHistogramEnabled {
+			recordSizeBytesHist := prometheus.NewHistogramVec(
+				prometheus.HistogramOpts{
+					Namespace: "aerospike_ttl",
+					Name:      "size_bytes_hist",
+					Help:      "Histogram of device/memory/record sizes of records observed by Aerospike TTL Exporter.",
+					// bucket min value is 1 byte, maximum value is 8 MiB (aerospike max).
+					// number of buckets comes from config file
+					Buckets: prometheus.ExponentialBucketsRange(
+						float64(histogramConf.SizeHistogramBucketMin),
+						float64(histogramConf.SizeHistogramBucketMax),
+						histogramConf.SizeHistogramBucketCount),
+					ConstLabels: prometheus.Labels{"namespace": namespace, "set": set},
+				}, []string{"metadata_op"},
+			)
+			prometheus.MustRegister(recordSizeBytesHist)
+			histograms["sizes"] = recordSizeBytesHist
 		}
 
 		if true {
