@@ -196,7 +196,7 @@ func getCount(n *as.Node, statKey string, cmd string, single bool) int64 {
 
 func nodeWarmup(n *as.Node) {
 	logrus.Debug("Warming up node..")
-	warmCount, err := n.WarmUp(1)
+	warmCount, err := n.WarmUp(5)
 	if err != nil {
 		logrus.Fatal("Error during node warmup", err)
 	}
@@ -281,7 +281,7 @@ func initRecSizeVars() ([]*as.Operation, *as.WritePolicy) {
 	return operations, writePolicy
 }
 
-func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operation, policy *as.WritePolicy) (float64, error) {
+func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operation, policy *as.WritePolicy) (int, error) {
 	// Apply the expression to a record
 	record, err := client.Operate(policy, key, operations...)
 
@@ -301,15 +301,13 @@ func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operatio
 		logrus.Error("Could not convert 'recordsize' to int")
 	}
 
-	recordsize_kb := float64(recordsize) / 1024.0
-
 	// if config.Service.Verbose {
 	// 	logrus.Debug("Found devsize: ", devsize, " converted to KiB -> ", devsize_kb)
 	// 	logrus.Debug("Found memsize: ", memsize, " converted to KiB -> ", memsize_kb)
 	// }
 
 	// return it as KiB
-	return recordsize_kb, err
+	return recordsize, err
 }
 
 // simple function to take a human duration input like 1m20s and return a time.Duration output
@@ -364,9 +362,13 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	policy.TotalTimeout = parseDur(element.PolicyTotalTimeout)
 	policy.SocketTimeout = parseDur(element.PolicySocketTimeout)
 
-	recs, _ := client.ScanNode(scanpol, localNode, namespace, set)
+	recs, err := client.ScanNode(scanpol, localNode, namespace, set)
 	total := 0
 	totalInspected := 0
+
+	if err != nil {
+		logrus.Fatal(err)
+	}
 
 	// if we intend to export mem/device size histograms, we'll need these vars
 	if element.KByteHistogramEnabled {
@@ -398,8 +400,9 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 					}
 				}
 
+				bytesTTLSize := float64(recordsize) / 1024.0
 				if element.KByteHistogramEnabled {
-					for i := 0.0; i < recordsize; i += element.KByteHistogramResolution {
+					for i := 0.0; i < bytesTTLSize; i += element.KByteHistogramResolution {
 						ns_set_to_histograms[namespaceSet]["bytes"].WithLabelValues("recordsize").Observe((float64(expireTime)))
 					}
 				}
