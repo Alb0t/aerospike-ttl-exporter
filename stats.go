@@ -112,31 +112,21 @@ func getReplicationFactor(n *as.Node, ns string) int64 {
 func countSet(n *as.Node, ns string, set string) int64 {
 	repl := getReplicationFactor(n, ns)
 	logrus.Debug("Found replication factor=", repl, " for ns ", ns)
+	if repl == 0 {
+		logrus.Warn("RF=0? Maybe namespace is typed wrong.")
+		return 0
+	}
 	if set != "" {
 		cmd := fmt.Sprintf("sets/%s/%s", ns, set)
 		objCount := getCount(n, "objects", cmd, true)
-		if repl == 0 {
-			logrus.Warn("RF=0? Maybe namespace is typed wrong.")
-			return 0
-		}
 		return (objCount / repl)
 	} else {
-		// this means we want to get the nullset which sucks.
-		// we have to return the difference of objects-(all set objects) given a namespace.
-		//
-		// since null set doesn't work with sets/s/s we will have to find what is in the nullset by adding up _all_ the sets in the ns and subtracting from total objects.
-
-		// get list of all sets and their objects
-		cmd := fmt.Sprintf("sets/%s", ns)
-		setsObjCount := getCount(n, "objects", cmd, false)
-		// objCount should contain the sum of all our sets now.
-
-		// now we get objects.
-		cmd = fmt.Sprintf("namespace/%s", ns)
+		// no set specified — scan covers the entire namespace (all sets + null set),
+		// so use total namespace object count for percentage calculations.
+		cmd := fmt.Sprintf("namespace/%s", ns)
 		totalNsObjects := getCount(n, "objects", cmd, true)
-		nullSetCount := totalNsObjects - setsObjCount
-		logrus.Debug("Found objects=", totalNsObjects, " and total set counts=", setsObjCount, " so our null-set must be:", nullSetCount)
-		return (nullSetCount / repl)
+		logrus.Debug("Found total objects=", totalNsObjects, " for namespace ", ns)
+		return (totalNsObjects / repl)
 	}
 }
 
@@ -346,10 +336,10 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	if element.ScanPercent > 0 && element.ScanPercent < 100 {
 		setCount := countSet(localNode, namespace, set)
 		logrus.Debug("Got setCount of:", setCount, " for localNode=", localNode, ", namespace=", namespace, ", set=", set, ".")
-		sampleRecCount := int64(float64(countSet(localNode, namespace, set)) * element.ScanPercent / 100)
+		sampleRecCount := int64(float64(setCount) * element.ScanPercent / 100)
 		if sampleRecCount < 1 {
-			logrus.Error("Nonsensical record count calculated:", sampleRecCount, ". Probably a bug.. lets not do this.")
-			return "Refusing to scan since we calculated a nonsense sample record count."
+			logrus.Warn("Nonsensical record count calculated:", sampleRecCount, ". Defaulting to 100 records.")
+			sampleRecCount = 100
 		}
 		scanpol.MaxRecords = int64(sampleRecCount)
 		logrus.Debug("Setting max records to ", sampleRecCount, " based off sample percent ", element.ScanPercent)
