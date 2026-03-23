@@ -343,7 +343,7 @@ func updateStats(namespace string, set string, namespaceSet string, element monc
 	// Aerospike deprecated ScanPercent because they're evil
 	// so we'll do it ourselves.
 	// TODO: maybe add predexp digest mod match.
-	if element.ScanPercent > 0 && element.ScanPercent < 100 && element.Recordcount == -1 {
+	if element.ScanPercent > 0 && element.ScanPercent < 100 {
 		setCount := countSet(localNode, namespace, set)
 		logrus.Debug("Got setCount of:", setCount, " for localNode=", localNode, ", namespace=", namespace, ", set=", set, ".")
 		sampleRecCount := int64(float64(countSet(localNode, namespace, set)) * element.ScanPercent / 100)
