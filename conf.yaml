@@ -12,8 +12,8 @@ service:
 monitor:
   - namespace: mynamespace
     set: User # what setname to scan? use `null` (without ticks) to just report on a namespace level
-    recordCount: 50000 # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
-    scanPercent: 1.1 # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
+    recordCount: 50000 # How many records to stop scanning at? If both recordCount and scanPercent are set, the scan stops at whichever limit is reached first.
+    scanPercent: 1.1 # what percentage of data to scan? Set to 0 or -1 to disable. Works alongside recordCount.
     reportCount: 300000 # How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
     scanTotalTimeout: 20m # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
     scanSocketTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
@@ -28,8 +28,8 @@ monitor:
       - 220d
   - namespace: someothernamespace
     set: null # what setname to scan? use `null` (without ticks) to just report on a namespace level
-    recordCount: -1 # How many records to stop scanning at? Pass '-recordCount=-1' to only use scanPercent.
-    scanPercent: 1.0 # what percentage of data to scan? Set this to 0 or -1 to only rely on recordCount
+    recordCount: -1 # How many records to stop scanning at? Set to -1 to disable. If both recordCount and scanPercent are set, the scan stops at whichever limit is reached first.
+    scanPercent: 1.0 # what percentage of data to scan? Set to 0 or -1 to disable. Works alongside recordCount.
     # width/start/numberOfBucketsToExport can only be used if staticBucketList is undefined, and vice versa.
     bucketWidth: 10d #You can append suffix "s", "h", "d". Do not use a different suffix than width, or it will throw an exception.
     bucketStart: 180d #You can append suffix "s", "h", "d". Do not use a different suffix than width, or it will throw an exception.
