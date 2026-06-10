@@ -9,6 +9,54 @@ service:
   username: foo # username to login to aerospike (Basic auth). omit/comment if auth not enabled.
   password: bar # password to login with username (basic auth). omit/comment if auth not enabled. Only considered if username is defined.
 
+  ## Auto-discovery mode (optional) -----------------------------------------
+  # When autoDiscover is true the exporter asks Aerospike which namespaces and
+  # sets exist, reads each set's default-ttl and ttl histogram, and builds the
+  # TTL histogram buckets automatically. The display unit (days/hours/seconds)
+  # is chosen from the magnitude of the observed max TTL. Discovery re-runs on
+  # its own interval and only re-registers a set's collectors when the computed
+  # buckets actually change. `monitor:` entries below still apply as per-set
+  # overrides (matched by namespace+set), overriding discovered config field by
+  # field. Sets discovered as never-expire (default-ttl=0 and empty ttl
+  # histogram) skip the TTL histograms but still get size_bytes_hist if enabled.
+  # A synthetic null-set entry is added per namespace when set-less records
+  # exist (namespace objects > sum of per-set objects); scanned with a
+  # server-side filter so only set-less records are counted.
+  autoDiscover: false # set true to enable
+  discoveryIntervalSecs: 300 # how often to re-discover/re-fit. Defaults to frequencySecs if unset/<=0.
+  discoveryBucketCount: 10 # number of linear TTL buckets to emit per set.
+  # discoveryRangePaddingPct extends each fitted range's top edge by this percent
+  # for headroom. Aerospike's ttl histogram rescales dynamically, so between
+  # discovery passes the live max TTL can drift past the observed max and spill
+  # into +Inf. Padding (e.g. 25) keeps that drift in a real bucket. 0 = none.
+  # Pair with a short discoveryIntervalSecs to re-fit before drift gets large.
+  discoveryRangePaddingPct: 25
+  # discoveryDefaults supplies the scan/perf/feature settings applied to every
+  # discovered set (same shape as a monitor entry, minus namespace/set). The TTL
+  # bucket boundaries are normally computed by discovery (ttlBuckets.mode: auto),
+  # but any bucket mode may be set here as the default for every discovered set.
+  discoveryDefaults:
+    recordCount: -1
+    scanPercent: 1.0
+    reportCount: 300000
+    scanTotalTimeout: 20m
+    scanSocketTimeout: 20m
+    policyTotalTimeout: 20m
+    policySocketTimeout: 20m
+    recordsPerSecond: 100
+    sizeHistogramEnabled: true
+    # ttlBuckets.mode: auto -> discovery fits linear TTL buckets to each set's
+    # live ttl histogram (the discovery default; only valid for ttlBuckets).
+    ttlBuckets:
+      mode: auto
+    # sizeBuckets: record-size histogram boundaries (raw bytes).
+    sizeBuckets:
+      mode: exponential
+      min: 1
+      max: 8389000
+      count: 10
+  ## --------------------------------------------------------------------------
+
 monitor:
   - namespace: mynamespace
     set: User # what setname to scan? use `null` (without ticks) to just report on a namespace level
@@ -20,20 +68,28 @@ monitor:
     policyTotalTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
     policySocketTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
     RecordsPerSecond: 0 # Limit the records per second returned by Aerospike server to the exporter. 0 means no limit.
-    # width/start/numberOfBucketsToExport can only be used if staticBucketList is undefined, and vice versa.
-    staticBucketList: #You can append suffix "s", "h", "d". Do not mix suffixes per array.
-      - 160d
-      - 170d
-      - 181d
-      - 220d
+    # ttlBuckets: TTL histogram boundaries. mode = static|linear|exponential|auto
+    # (auto only valid under discoveryDefaults). static values may carry an "s",
+    # "h", or "d" suffix; do not mix suffixes within one list.
+    ttlBuckets:
+      mode: static
+      static:
+        - 160d
+        - 170d
+        - 181d
+        - 220d
   - namespace: someothernamespace
     set: null # what setname to scan? use `null` (without ticks) to just report on a namespace level
     recordCount: -1 # How many records to stop scanning at? Set to -1 to disable. If both recordCount and scanPercent are set, the scan stops at whichever limit is reached first.
     scanPercent: 1.0 # what percentage of data to scan? Set to 0 or -1 to disable. Works alongside recordCount.
-    # width/start/numberOfBucketsToExport can only be used if staticBucketList is undefined, and vice versa.
-    bucketWidth: 10d #You can append suffix "s", "h", "d". Do not use a different suffix than width, or it will throw an exception.
-    bucketStart: 180d #You can append suffix "s", "h", "d". Do not use a different suffix than width, or it will throw an exception.
-    numberOfBucketsToExport: 10 # your last bucket will be: bucketStart + (bucketWidth * numberOfBucketsToExporter)
+    # ttlBuckets linear: evenly spaced buckets from `start` with `width`, `count`
+    # of them. last bucket = start + (width * count). suffix "s","h","d" allowed;
+    # start and width must use the same suffix.
+    ttlBuckets:
+      mode: linear
+      start: 180d
+      width: 10d
+      count: 10
     reportCount: 300000 # if running verbose, How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
     scanTotalTimeout: 20m # this and other timeout fields are parsed using golang time.parseduration so values like (20m1s, 2h, 1s, 200ms) can be used
     scanSocketTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
@@ -49,22 +105,19 @@ monitor:
     # This also artificially deflates the number, so you will have to scale it up. If we are observing 334x less data, you will need to 334x the final value from the histograms - though they should be accurate as a distribution.
     #  There is no good way around this.
     kbyteHistogramResolution: 0.334 # maximum rez 0.001 (1 byte res) which seems to generate more than 30x more compute needs than 0.333
-    kbyteHistogram: true
+    kbyteHistogramEnabled: true
     ## Bucket Size exports
-    # Min/Max/Count are interpolated into prometheus.ExponentialBucketsRange
-    # See: https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#ExponentialBucketsRange for details
-    # the config provided below creates the following buckets:
-    # "1"
-    # "5.878968493247925"
-    # "34.56227054460177"
-    # "203.19049958682461"
-    # "1194.5505451982474"
-    # "7022.725018812627"
-    # "41286.37912234337"
-    # "242721.32206054562"
-    # "1.4269510050334302e+06"
-    # "8.388999999999996e+06"
-    # "+Inf"
-    sizeHistogramBucketMin: 1 # prometheus won't accept a 0 here, and if the record size is 0 we won't export it anyway
-    sizeHistogramBucketMax: 8389000 # 8 MiB is the max size for any aerospike record in 7.0+
-    sizeHistogramBucketCount: 10 # will create this many buckets evenly distributed between Min and Max
+    sizeHistogramEnabled: true
+    # sizeBuckets: record-size histogram boundaries in raw bytes. mode =
+    # static|linear|exponential (auto is TTL-only). exponential min/max/count are
+    # interpolated into prometheus.ExponentialBucketsRange.
+    # See: https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#ExponentialBucketsRange
+    # the config below creates buckets:
+    # 1, 5.878968493247925, 34.56227054460177, 203.19049958682461,
+    # 1194.5505451982474, 7022.725018812627, 41286.37912234337,
+    # 242721.32206054562, 1.4269510050334302e+06, 8.388999999999996e+06, +Inf
+    sizeBuckets:
+      mode: exponential
+      min: 1 # prometheus won't accept a 0 here, and if the record size is 0 we won't export it anyway
+      max: 8389000 # 8 MiB is the max size for any aerospike record in 7.0+
+      count: 10 # will create this many buckets evenly distributed between min and max

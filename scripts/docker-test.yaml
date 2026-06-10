@@ -1,0 +1,32 @@
+---
+# Exporter config for the ephemeral docker Aerospike used by gen-stability-test.sh.
+# Single community-edition node, no auth, autoDiscover so the seeded `test`
+# namespace/set is found and scanned automatically.
+service:
+  listenPort: :9634
+  aerospikeAddr: 127.0.0.1
+  aerospikePort: 3000
+  skipNodeCheck: true
+  failOnClusterChange: false
+  frequencySecs: 1
+  verbose: false
+  autoDiscover: true
+  discoveryIntervalSecs: 300
+  discoveryBucketCount: 10
+  discoveryRangePaddingPct: 25
+  discoveryDefaults:
+    scanPercent: 100
+    reportCount: 1
+    recordsPerSecond: 100000
+    scanTotalTimeout: 20m
+    scanSocketTimeout: 20m
+    policyTotalTimeout: 20m
+    policySocketTimeout: 20m
+    sizeHistogramEnabled: true
+    ttlBuckets:
+      mode: auto
+    sizeBuckets:
+      mode: exponential
+      min: 1
+      max: 8389000
+      count: 10

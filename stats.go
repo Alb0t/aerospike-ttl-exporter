@@ -8,6 +8,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	asl "github.com/aerospike/aerospike-client-go/v6/logger"
@@ -16,16 +18,19 @@ import (
 	logrus "github.com/sirupsen/logrus"
 )
 
-var client *as.Client
+// client is read concurrently by the scan and discovery schedulers and
+// replaced by aeroInit on reconnect; the atomic pointer makes the unlocked
+// reads safe, while aeroMu serializes the (re)connects themselves.
+var client atomic.Pointer[as.Client]
 var scanpol = as.NewScanPolicy()
 var policy = as.NewPolicy()
 var infoPolicy = as.NewInfoPolicy()
 var cp = as.NewClientPolicy()
-var err error
 var buf bytes.Buffer
 var backoff = 1.0
 var measureOps []*as.Operation
 var opPolicy *as.WritePolicy
+var aeroMu sync.Mutex // serializes aeroInit so the two schedulers don't race to reconnect
 
 const NON_EXPIRABLE_TTL_VALUE = 4294967295
 
@@ -62,6 +67,17 @@ func findLocalIps() error {
 }
 
 func aeroInit() error {
+	// Both the scan scheduler and the discovery scheduler can call aeroInit
+	// concurrently; aeroMu serializes the (re)connects while the atomic client
+	// pointer keeps concurrent readers safe. If a peer already (re)connected
+	// while we waited on the lock, reuse that healthy connection rather than
+	// churning it.
+	aeroMu.Lock()
+	defer aeroMu.Unlock()
+	if c := client.Load(); c != nil && c.IsConnected() {
+		return nil
+	}
+
 	logger := log.New(&buf, "AerospikeLogger: ", log.LstdFlags|log.Lshortfile)
 	logger.SetOutput(os.Stdout)
 	asl.Logger.SetLogger(logger)
@@ -71,11 +87,6 @@ func aeroInit() error {
 	} else {
 		asl.Logger.SetLevel(asl.OFF)
 	}
-
-	if client != nil && client.IsConnected() {
-		logrus.Warn("Client was connected but aeroinit called. Reopening connection")
-		client.Close()
-	}
 	// TODO: make these configurable.
 	// cp.ConnectionQueueSize = 20
 	// cp.ConnectionQueueSize = 3
@@ -84,21 +95,24 @@ func aeroInit() error {
 	cp.IdleTimeout = 55 * time.Second
 	//function to define policies and connect to aerospike.
 	logrus.Info("Connecting to ", config.Service.AerospikeAddr, "...")
+	var c *as.Client
+	var err error
 	if config.Service.Username != "" {
 		cp.User = config.Service.Username
 		if config.Service.Password != "" {
 			cp.Password = config.Service.Password
 		}
-		client, err = as.NewClientWithPolicy(cp, config.Service.AerospikeAddr, config.Service.AerospikePort)
+		c, err = as.NewClientWithPolicy(cp, config.Service.AerospikeAddr, config.Service.AerospikePort)
 	} else {
-		client, err = as.NewClient(config.Service.AerospikeAddr, config.Service.AerospikePort)
+		c, err = as.NewClient(config.Service.AerospikeAddr, config.Service.AerospikePort)
 	}
 
-	if err != nil || !client.IsConnected() {
+	if err != nil || !c.IsConnected() {
 		logrus.Fatal("Exception while establishing connection:", err)
 		return err
 	}
-	logrus.Info("Connected:", client.IsConnected())
+	client.Store(c)
+	logrus.Info("Connected:", c.IsConnected())
 	scanpol.IncludeBinData = false
 	return nil
 }
@@ -116,7 +130,7 @@ func countSet(n *as.Node, ns string, set string) int64 {
 		logrus.Warn("RF=0? Maybe namespace is typed wrong.")
 		return 0
 	}
-	if set != "" {
+	if set != NullSet {
 		cmd := fmt.Sprintf("sets/%s/%s", ns, set)
 		objCount := getCount(n, "objects", cmd, true)
 		return (objCount / repl)
@@ -196,8 +210,12 @@ func nodeWarmup(n *as.Node) {
 func getLocalNode() *as.Node {
 	logrus.Debug("Finding local node.")
 	var localNode *as.Node
+	c := client.Load()
+	if c == nil {
+		return nil
+	}
 	logrus.Debug("Fetching membership list..")
-	nodes := client.GetNodes()
+	nodes := c.GetNodes()
 	logrus.Debug("Looping through active cluster nodes")
 	if config.Service.SkipNodeCheck {
 		localNode = nodes[0]
@@ -225,34 +243,71 @@ func getLocalNode() *as.Node {
 }
 
 func runner() {
+	// Guard the whole scan cycle (not each set): the scheduler can fire again
+	// while a previous runner is mid-loop, and overlapping runs would race on the
+	// shared global scanpol/policy mutated per set in applyScanPolicy.
+	if !running.CompareAndSwap(false, true) {
+		logrus.Warn("Already running. Skipping.")
+		return
+	}
+	defer running.Store(false)
+	if config.Service.AutoDiscover {
+		runnerDiscovery()
+		return
+	}
 	logrus.Debug("Printing namespaces to monitor and their config below.")
 	for _, x := range config.Monitor {
 		logrus.Debugf("%+v", x)
 	}
-	for _, element := range config.Monitor {
-		// if for some reason the scheduler calls us concurrently, just skip the new runs until the existing one is done
-		// probably just paranoia.
-		if running {
-			logrus.Warn("Already running. Skipping.")
+	for _, ovr := range config.Monitor {
+		element := ovr.resolve(monconf{})
+		hs, ok := ns_set_to_histSet[nsSetKey(element.Namespace, element.Set)]
+		if !ok {
+			logrus.Warnf("No collectors registered for %s:%s, skipping.", element.Namespace, element.Set)
+			continue
 		}
-		running = true
-		// while I am splitting namespace and set for aerospike calls and metric display,
-		// the metrics are stored in a map so preserving the original "ns" var
-		startTime := float64(time.Now().Unix())
-		err := updateStats(element.Namespace, element.Set, element.Namespace+":"+element.Set, element)
-		finishTime := float64(time.Now().Unix())
-		timeToUpdate := float64((finishTime - startTime))
-		timeToUpdateMinutes := float64(timeToUpdate / 60)
-		logrus.Info("Scan for ", element.Namespace, ":", element.Set, " took ", timeToUpdateMinutes, " minutes. Reporting as:", timeToUpdate, " seconds.")
-		scanTimes.WithLabelValues(element.Namespace, element.Set).Set(timeToUpdate)
+		scanOne(element, hs)
+	}
+}
 
-		if err != "" {
-			logrus.Error("There was a problem updating the stats.", err)
-		} else {
-			// Only update the "aerospike_ttl_scan_last_updated" metric if the update was successful.
-			scanLastUpdated.WithLabelValues(element.Namespace, element.Set).Set(finishTime)
+// runnerDiscovery scans the sets published by the most recent discovery pass,
+// fetching each set's live collectors from the discovery registry.
+func runnerDiscovery() {
+	v := effectiveSets.Load()
+	if v == nil {
+		logrus.Warn("Discovery has not populated any sets yet, skipping scan cycle.")
+		return
+	}
+	sets := v.([]effectiveSet)
+	for _, es := range sets {
+		hs, ok := discoveryRegistry.get(es.key())
+		if !ok {
+			logrus.Warnf("No collectors registered for %s, skipping.", es.key())
+			continue
 		}
-		running = false
+		scanOne(es.cfg, hs)
+	}
+}
+
+// scanOne runs (and times) a single set's scan against the supplied collectors,
+// updating the scan-time and last-updated gauges. Overlap protection lives in
+// the caller: runner() holds the `running` guard for the entire scan cycle.
+func scanOne(element monconf, hs *histSet) {
+	// while I am splitting namespace and set for aerospike calls and metric display,
+	// the metrics are stored in a map so preserving the original "ns" var
+	startTime := float64(time.Now().Unix())
+	err := updateStats(element.Namespace, element.Set, element, hs)
+	finishTime := float64(time.Now().Unix())
+	timeToUpdate := float64((finishTime - startTime))
+	timeToUpdateMinutes := float64(timeToUpdate / 60)
+	logrus.Info("Scan for ", element.Namespace, ":", element.Set, " took ", timeToUpdateMinutes, " minutes. Reporting as:", timeToUpdate, " seconds.")
+	scanTimes.WithLabelValues(element.Namespace, element.Set).Set(timeToUpdate)
+
+	if err != "" {
+		logrus.Error("There was a problem updating the stats.", err)
+	} else {
+		// Only update the "aerospike_ttl_scan_last_updated" metric if the update was successful.
+		scanLastUpdated.WithLabelValues(element.Namespace, element.Set).Set(finishTime)
 	}
 }
 
@@ -309,116 +364,227 @@ func parseDur(dur string) time.Duration {
 	return parsedDur
 }
 
-func updateStats(namespace string, set string, namespaceSet string, element monconf) string {
-	logrus.Debug("Running:", running)
-	if client == nil || !client.IsConnected() {
-		err := aeroInit()
-		if err != nil {
-			return "Failure during aeroInit()."
+// scanErrMsg formats a ScanNode error into the updateStats return string ("" on
+// success). A non-empty result tells scanOne to log the failure and skip the
+// set's last-updated gauge. It is deliberately non-fatal: a single set's scan
+// failure (e.g. a timeout on a large whole-namespace scan) must not take the
+// whole exporter down, which logrus.Fatal would do.
+func scanErrMsg(namespace, set string, err error) string {
+	if err == nil {
+		return ""
+	}
+	return fmt.Sprintf("scan failed for %s:%s: %v", namespace, set, err)
+}
+
+// ttlRange tracks the lowest and highest record TTL (raw seconds) seen during a
+// single set's scan, feeding the min/max TTL gauges.
+type ttlRange struct {
+	min, max uint32
+	seen     bool
+}
+
+// observe folds one record's TTL (seconds) into the running min/max.
+func (r *ttlRange) observe(ttlSec uint32) {
+	if !r.seen || ttlSec < r.min {
+		r.min = ttlSec
+	}
+	if !r.seen || ttlSec > r.max {
+		r.max = ttlSec
+	}
+	r.seen = true
+}
+
+// publish writes the observed range to the gauges. When no expirable record was
+// seen it leaves the prior values untouched, avoiding a misleading 0.
+func (r *ttlRange) publish(namespace, set string) {
+	if !r.seen {
+		return
+	}
+	minTTLGauge.WithLabelValues(namespace, set).Set(float64(r.min))
+	maxTTLGauge.WithLabelValues(namespace, set).Set(float64(r.max))
+}
+
+// processRecord folds one successfully-scanned record into the histograms and
+// the ttl range, returning true when the record was expirable (and thus counted
+// toward the exported total). Non-expirable records are skipped.
+func processRecord(rec *as.Result, element monconf, hs *histSet, ttls *ttlRange) bool {
+	if rec.Record.Expiration == NON_EXPIRABLE_TTL_VALUE {
+		// non-expirable record; the Aerospike server already has a log ticket for this.
+		return false
+	}
+	ttls.observe(rec.Record.Expiration)
+	modifier := hs.modifier
+	if modifier < 1 {
+		modifier = 1 // guard div-by-zero; expirable sets always set this
+	}
+	expireTime := float64(rec.Record.Expiration) / float64(modifier)
+	// counts is nil for sets discovered as non-expirable; skip the TTL observe
+	// (a stray expirable record may still appear during a race).
+	if hs.counts != nil {
+		hs.counts.WithLabelValues().Observe(expireTime)
+	}
+	observeRecordSize(rec, element, hs, expireTime)
+	return true
+}
+
+// observeRecordSize reads the record's size (a metadata-only, read-only Operate)
+// and feeds the kib/size histograms when enabled. The read is skipped entirely
+// when neither histogram is enabled, avoiding a per-record server round-trip.
+func observeRecordSize(rec *as.Result, element monconf, hs *histSet, expireTime float64) {
+	if !element.KByteHistogramEnabled && !element.SizeHistogramEnabled {
+		return
+	}
+	// no-op "Operation"/"Expression" returning metadata only; should not incur IO
+	// expense and does not mutate the record (opPolicy carries TTLDontUpdate).
+	recordsize, err := measureRecordSize(client.Load(), rec.Record.Key, measureOps, opPolicy)
+	if err != nil && err != as.ErrKeyNotFound { // key-not-found is debug-logged earlier and non-fatal.
+		logrus.Errorf("Failure fetching record size. Err: %v", err)
+	}
+	// KByteHistogramResolution is the loop step; a zero step would spin forever.
+	if element.KByteHistogramEnabled && hs.bytes != nil && element.KByteHistogramResolution > 0 {
+		bytesTTLSize := float64(recordsize) / 1024.0
+		for i := 0.0; i < bytesTTLSize; i += element.KByteHistogramResolution {
+			hs.bytes.WithLabelValues("recordsize").Observe(expireTime)
+		}
+	}
+	if element.SizeHistogramEnabled && hs.sizes != nil && recordsize != 0 {
+		hs.sizes.WithLabelValues("recordsize").Observe(float64(recordsize))
+	}
+}
+
+// applyScanPolicy configures the shared scan/read policies for one set's scan:
+// timeouts, throttle, and the ScanPercent → MaxRecords sampling. Aerospike
+// dropped native ScanPercent, so we approximate it with a record cap.
+func applyScanPolicy(element monconf, localNode *as.Node, namespace, set string) {
+	scanpol.TotalTimeout = parseDur(element.ScanTotalTimeout)
+	scanpol.SocketTimeout = parseDur(element.ScanSocketTimeout)
+	scanpol.RecordsPerSecond = element.RecordsPerSecond // 0 => no throttle (ahhh!!)
+	switch {
+	case element.ScanPercent > 0 && element.ScanPercent < 100:
+		scanpol.MaxRecords = sampledMaxRecords(element, localNode, namespace, set)
+	case element.ScanPercent >= 100:
+		logrus.Warn("Setting max records to 0 to scan 100% of data, seems kinda silly so warning you..")
+		scanpol.MaxRecords = 0
+	default:
+		scanpol.MaxRecords = int64(element.Recordcount)
+	}
+	policy.TotalTimeout = parseDur(element.PolicyTotalTimeout)
+	policy.SocketTimeout = parseDur(element.PolicySocketTimeout)
+	// The synthetic null set must count ONLY set-less records. A bare set=""
+	// scan is namespace-wide, so filter server-side to records whose set name
+	// is empty. scanpol is a shared global reused across sets, so clear the
+	// filter for named sets or it would leak onto the next scan in the loop.
+	if set == NullSet {
+		scanpol.FilterExpression = as.ExpEq(as.ExpSetName(), as.ExpStringVal(""))
+	} else {
+		scanpol.FilterExpression = nil
+	}
+}
+
+// sampledMaxRecords computes the MaxRecords cap approximating ScanPercent
+// sampling for a set, falling back to 100 when the computed sample is < 1.
+func sampledMaxRecords(element monconf, localNode *as.Node, namespace, set string) int64 {
+	setCount := countSet(localNode, namespace, set)
+	logrus.Debug("Got setCount of:", setCount, " for localNode=", localNode, ", namespace=", namespace, ", set=", set, ".")
+	sampleRecCount := int64(float64(setCount) * element.ScanPercent / 100)
+	if sampleRecCount < 1 {
+		logrus.Warn("Nonsensical record count calculated:", sampleRecCount, ". Defaulting to 100 records.")
+		sampleRecCount = 100
+	}
+	logrus.Debug("Setting max records to ", sampleRecCount, " based off sample percent ", element.ScanPercent)
+	return sampleRecCount
+}
+
+// ensureNode (re)connects the client if needed and returns the local node. The
+// returned string is a non-empty updateStats error message when no usable local
+// node is available; an empty string means localNode is set.
+func ensureNode() (*as.Node, string) {
+	if c := client.Load(); c == nil || !c.IsConnected() {
+		if err := aeroInit(); err != nil {
+			return nil, "Failure during aeroInit()."
 		}
 	}
 	localNode := getLocalNode()
 	nodeWarmup(localNode)
 	if localNode == nil {
-		return "Did not find self in node list"
+		return nil, "Did not find self in node list"
+	}
+	return localNode, ""
+}
+
+func updateStats(namespace string, set string, element monconf, hs *histSet) string {
+	logrus.Debug("Running:", running.Load())
+	localNode, msg := ensureNode()
+	if msg != "" {
+		return msg
 	}
 
 	logrus.WithFields(logrus.Fields{
 		"namespace": namespace,
 		"set":       set,
 	}).Info("Begin scan/inspection.")
-	scanpol.TotalTimeout = parseDur(element.ScanTotalTimeout)
-	scanpol.SocketTimeout = parseDur(element.ScanSocketTimeout)
-	scanpol.RecordsPerSecond = element.RecordsPerSecond // this will default to 0 if its not passed. that means no throttle (ahhh!!)
-	// Aerospike deprecated ScanPercent because they're evil
-	// so we'll do it ourselves.
-	// TODO: maybe add predexp digest mod match.
-	if element.ScanPercent > 0 && element.ScanPercent < 100 {
-		setCount := countSet(localNode, namespace, set)
-		logrus.Debug("Got setCount of:", setCount, " for localNode=", localNode, ", namespace=", namespace, ", set=", set, ".")
-		sampleRecCount := int64(float64(setCount) * element.ScanPercent / 100)
-		if sampleRecCount < 1 {
-			logrus.Warn("Nonsensical record count calculated:", sampleRecCount, ". Defaulting to 100 records.")
-			sampleRecCount = 100
-		}
-		scanpol.MaxRecords = int64(sampleRecCount)
-		logrus.Debug("Setting max records to ", sampleRecCount, " based off sample percent ", element.ScanPercent)
-	} else if element.ScanPercent >= 100 {
-		logrus.Warn("Setting max records to 0 to scan 100% of data, seems kinda silly so warning you..")
-		scanpol.MaxRecords = 0
-	} else {
-		scanpol.MaxRecords = int64(element.Recordcount)
-	}
-	policy.TotalTimeout = parseDur(element.PolicyTotalTimeout)
-	policy.SocketTimeout = parseDur(element.PolicySocketTimeout)
+	applyScanPolicy(element, localNode, namespace, set)
 
-	recs, err := client.ScanNode(scanpol, localNode, namespace, set)
-	total := 0
-	totalInspected := 0
+	recs, err := client.Load().ScanNode(scanpol, localNode, namespace, scanSet(set))
+	var ttls ttlRange
 
-	if err != nil {
-		logrus.Fatal(err)
+	if msg := scanErrMsg(namespace, set, err); msg != "" {
+		logrus.Error(msg)
+		return msg
 	}
 
-	// if we intend to export mem/device size histograms, we'll need these vars
-	if element.KByteHistogramEnabled {
+	// measureRecordSize is needed by both the kib and size histograms; initialize
+	// its read-only (TTLDontUpdate) policy once when either is enabled so the
+	// metadata read never falls back to the client's default write policy.
+	if element.KByteHistogramEnabled || element.SizeHistogramEnabled {
 		measureOps, opPolicy = initRecSizeVars()
 	}
-	for rec := range recs.Results() {
-		if config.Service.Verbose {
-			if total%element.ReportCount == 0 { // this is after the scan is done. may not be valuable other than for debugging.
-				logrus.Info("Processed ", total, " records...")
-			}
-		}
-		if rec.Err == nil {
-			totalInspected++
-			if rec.Record.Expiration == NON_EXPIRABLE_TTL_VALUE {
-				// non expirable record. The Aerospike server already has a log ticket for this.
-				// logrus.Debug("Found non-expirable record, not adding to total or exporting.")
-				// too noisy disabled logging on this
-			} else {
-				total++
-				expireTime := rec.Record.Expiration / uint32(ns_set_to_ttl_unit[namespaceSet]["modifier"])
-				ns_set_to_histograms[namespaceSet]["counts"].WithLabelValues().Observe(float64(expireTime))
-
-				// This should result in a no-op using "Operation" with "Expression" to return metadata only.
-				// should not incur IO expense.
-				recordsize, err := measureRecordSize(client, rec.Record.Key, measureOps, opPolicy)
-				if err != nil {
-					if err != as.ErrKeyNotFound { // we debug log this early, no need to log it again and its not fatal.
-						logrus.Errorf("Failure fetching record size. Err: %v", err)
-					}
-				}
-
-				bytesTTLSize := float64(recordsize) / 1024.0
-				if element.KByteHistogramEnabled {
-					for i := 0.0; i < bytesTTLSize; i += element.KByteHistogramResolution {
-						ns_set_to_histograms[namespaceSet]["bytes"].WithLabelValues("recordsize").Observe((float64(expireTime)))
-					}
-				}
-
-				if element.SizeHistogramEnabled {
-					if recordsize != 0 {
-						ns_set_to_histograms[namespaceSet]["sizes"].WithLabelValues("recordsize").Observe(float64(recordsize))
-					}
-				}
-			}
-		} else {
-			logrus.Error("Error while inspecting scan results: ", rec.Err)
-			logrus.Warn("Sleeping 140s since we hit an error to allow any pending scan to clear out.")
-			time.Sleep(140 * time.Second)
-		}
-		if element.Recordcount != -1 && total >= element.Recordcount {
-			logrus.Debug("Retrieved ", total, " records. Which is >= the limit specified of ", element.Recordcount, ". Will terminate query now.")
-			recs.Close() // close the record set to stop the query
-			break
-		}
-	}
+	counts := drainScan(recs, element, hs, &ttls)
+	ttls.publish(namespace, set)
 	logrus.WithFields(logrus.Fields{
-		"total(records exported)": total,
-		"totalInspected":          totalInspected,
+		"total(records exported)": counts.exported,
+		"totalInspected":          counts.inspected,
 		"namespace":               namespace,
 		"set":                     set,
 	}).Info("Scan complete.")
 	return ""
+}
+
+// scanCounts holds the per-scan tallies returned by drainScan.
+type scanCounts struct {
+	exported  int // records counted into the histograms
+	inspected int // records pulled from the scan (incl. non-expirable)
+}
+
+// countRecord folds one successfully-scanned record into the tallies: it always
+// counts toward inspected, and toward exported when the record was expirable.
+func (c *scanCounts) countRecord(rec *as.Result, element monconf, hs *histSet, ttls *ttlRange) {
+	c.inspected++
+	if processRecord(rec, element, hs, ttls) {
+		c.exported++
+	}
+}
+
+// drainScan iterates one node's scan result set, feeding each record through
+// processRecord, and stops early once the configured Recordcount cap is hit.
+func drainScan(recs *as.Recordset, element monconf, hs *histSet, ttls *ttlRange) scanCounts {
+	var c scanCounts
+	for rec := range recs.Results() {
+		if config.Service.Verbose && element.ReportCount > 0 && c.exported%element.ReportCount == 0 {
+			logrus.Info("Processed ", c.exported, " records...")
+		}
+		if rec.Err != nil {
+			logrus.Error("Error while inspecting scan results: ", rec.Err)
+			logrus.Warn("Sleeping 140s since we hit an error to allow any pending scan to clear out.")
+			time.Sleep(140 * time.Second)
+		} else {
+			c.countRecord(rec, element, hs, ttls)
+		}
+		if element.Recordcount != -1 && c.exported >= element.Recordcount {
+			logrus.Debug("Retrieved ", c.exported, " records. Which is >= the limit specified of ", element.Recordcount, ". Will terminate query now.")
+			recs.Close() // close the record set to stop the query
+			break
+		}
+	}
+	return c
 }
