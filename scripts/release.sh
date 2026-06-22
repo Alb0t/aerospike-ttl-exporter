@@ -25,8 +25,9 @@ if [[ "${local_sha}" != "${remote_sha}" ]]; then
   exit 1
 fi
 
-if git tag --points-at HEAD | grep -q '^v'; then
-  echo "HEAD already tagged: $(git tag --points-at HEAD | grep '^v' | tr '\n' ' ')— bump a commit first"
+existing_tags="$(git tag --points-at HEAD | grep '^v' || true)"
+if [[ -n "${existing_tags}" ]]; then
+  echo "HEAD already tagged: ${existing_tags//$'\n'/ }— bump a commit first"
   exit 1
 fi
 unformatted="$(gofmt -l .)"; [[ -z "${unformatted}" ]] || { echo "gofmt needed: ${unformatted}"; exit 1; }
