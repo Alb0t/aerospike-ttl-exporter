@@ -5,7 +5,7 @@
 .vscode
 dist
 debug
-gorelease.sh
 aerospike-ttl-exporter
+aerospike-ttl-exporter-*
 testconf.yaml
 __debug_bin*

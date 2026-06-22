@@ -1,65 +1,66 @@
-# aerospike-ttl-prom-exporter
+# aerospike-ttl-exporter
 
-A prometheus exporter than scans record ttl for Aerospike and exports it.
+A Prometheus exporter that scans Aerospike record TTLs and sizes, exporting them as histograms with configurable bucket boundaries.
 
-# The problem:
-tl;dr - this allows us to measure storage capacity in a situation where we store data until eviction, or we want to understand the distribution of TTLs better within a system and monitor that over time.
+## The problem
 
-TTL (time-to-live) on a record dictates when the record will expire, and if evicting we need to measure the lowest bucket and trends of these ttls.
+TTL (time-to-live) on a record dictates when it expires. If you store data until eviction, you need to measure the lowest bucket and trends of these TTLs over time.
 
-The data currently exported by Aerospike histogram dumps is not accurate enough to give us the granularity we need to look at these marks accurately. The histogram exports 100 buckets, always, and depending on the min/max of that local system we can get wildly different metrics between systems. This also means that the accuracy of these metrics can be very low, and further making the problem worse - we do not have a way to line up the 'bucket' boundaries of the exported histograms, so we have to decrease accuracy further by lumping the ranges into different buckets that line up in grafana. The built-in feature also only gives us record counts, and we are unable to see a distribution of size across various ttl buckets.
+Aerospike's built-in histogram dumps export 100 fixed-count buckets whose boundaries depend on the local min/max, so:
 
-# Solution:
-Write a custom exporter that takes a sample on each server on a scheduled task, and exports that data to prometheus.
+- Accuracy varies wildly between nodes.
+- Bucket boundaries don't align across servers, forcing lossy re-bucketing in Grafana.
+- Only record counts are available — no size distribution across TTL ranges.
 
-This allows us to ask questions like: 
-## How large are the users in the fresh TTL range?
-```
+## Solution
+
+A custom exporter that samples records on each server on a schedule and exports TTL and size histograms to Prometheus with operator-controlled (or auto-fitted) bucket boundaries.
+
+## Example queries
+
+### How large are the users in the fresh TTL range?
+```promql
 # Scenario: default-ttl=33d
 histogram_quantile(0.50, sum(rate(aerospike_ttl_kib_hist_bucket{namespace="myns"}[$__rate_interval])) by (le))
 # Query result: 28.6
 # Interpreted: 50% of the data has been written in the last (33-28.6) 4.4 days
 ```
 
-## How many records are in the fresh TTL range?
-```
+### How many records are in the fresh TTL range?
+```promql
 # Scenario: default-ttl=33d
 histogram_quantile(0.50, sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns"}[$__rate_interval])) by (le))
 # Query result: 22.1
 # Interpreted: 50% of the data has been written in the last (33-22.1) 10.9 days
 ```
 
-## What percentage of records will expire in a week?
-```
-# We divide the number of records (counts) that will expire <=7 days, but the "+Inf' bucket which includes everything.
+### What percentage of records will expire in a week?
+```promql
 sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns",le="7",ttlUnit="days"}[$__rate_interval]))*100
 /
 sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns",le="+Inf"}[$__rate_interval]))
-
 # Result: 13.1
 ```
 
-## What percentage of data will expire in a week?
-```
-# We divide the number of records (counts) that will expire <=7 days, but the "+Inf' bucket which includes everything.
-sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns",le="7",ttlUnit="days"}[$__rate_interval]))*100
+### What percentage of data (by size) will expire in a week?
+```promql
+sum(rate(aerospike_ttl_kib_hist_bucket{namespace="myns",le="7",ttlUnit="days"}[$__rate_interval]))*100
 /
-sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns",le="+Inf"}[$__rate_interval]))
-
+sum(rate(aerospike_ttl_kib_hist_bucket{namespace="myns",le="+Inf"}[$__rate_interval]))
 # Result: 1.4
 ```
 
-## Conclusions about above queries: We have an abornmal distribution where our largest records are updated more often!
+### Conclusions: an abnormal distribution where the largest records are updated more often.
 
-## How will my evict-void-time change if I evict 10% of my data earlier?
-This is useful if you are already evicting and you need to understand how changes will affect your eviction time like:
-* records will become 10% larger
-* we will lose 10% of our capacity
-* we will reduce my hwm by 10% of its current value (ex.. 50 to 45%)
+### How will my evict-void-time change if I evict 10% of my data earlier?
 
-How do we forecast those changes?
-```
-histogram_quantile(0.10, 
+Useful when you're already evicting and need to forecast changes like:
+- Records will become 10% larger
+- You will lose 10% of capacity
+- You will reduce your HWM by 10% (e.g. 50% to 45%)
+
+```promql
+histogram_quantile(0.10,
     sum(
         rate(
             aerospike_ttl_kib_hist_bucket{namespace="myns"}
@@ -67,71 +68,242 @@ histogram_quantile(0.10,
         )
     ) by (le)
 )
-
 # Result: 26.2
 ```
 
+## Metrics reference
 
-# Example exporter output:
+All metrics are in the `aerospike_ttl_` namespace.
+
+### Per-set histograms
+
+| Metric | Labels | Description |
+|--------|--------|-------------|
+| `counts_hist` | `namespace`, `set`, `ttlUnit` | Records per TTL bucket. |
+| `kib_hist` | `namespace`, `set`, `ttlUnit`, `storage_type` | Bytes per TTL bucket (`storage_type=recordsize`). Requires `kbyteHistogramEnabled: true`. |
+| `size_bytes_hist` | `namespace`, `set`, `metadata_op` | Record size distribution in raw bytes (`metadata_op=recordsize`). Requires `sizeHistogramEnabled: true`. Uses `sizeBuckets` config. |
+
+### Per-set gauges
+
+| Metric | Labels | Description |
+|--------|--------|-------------|
+| `scan_time_seconds` | `namespace`, `set` | Wall-clock seconds the most recent scan took. |
+| `scan_last_updated` | `namespace`, `set` | Unix epoch when the most recent scan finished. |
+| `min_ttl_seconds` | `namespace`, `set` | Lowest record TTL (seconds) observed in the most recent scan. Non-expirable records excluded. |
+| `max_ttl_seconds` | `namespace`, `set` | Highest record TTL (seconds) observed in the most recent scan. Non-expirable records excluded. |
+
+### Per-namespace gauges
+
+| Metric | Labels | Description |
+|--------|--------|-------------|
+| `default_ttl_seconds` | `namespace` | Namespace `default-ttl` as reported by Aerospike (`0` = never expire). Discovery mode only. |
+
+### Global
+
+| Metric | Labels | Description |
+|--------|--------|-------------|
+| `build_info` | `version` | Always `1`. The `version` label carries the release tag (or `dev`). |
+
+### Example output
+
 ```
-....
-aerospike_ttl_build_info{version="3.1.0"} 1
-aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.3824e+07"} 858
-aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.4688e+07"} 901
-aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.56384e+07"} 971
-aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="1.9008e+07"} 1004
-aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",le="+Inf"} 1004
-aerospike_ttl_counts_hist_sum{namespace="myNS",set="Beans"} 9.037094916e+09
-aerospike_ttl_counts_hist_count{namespace="myNS",set="Beans"} 1004
-aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",storage_type="device",le="1.3824e+07"} 1938
-aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",storage_type="device",le="1.4688e+07"} 2046
-aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",storage_type="device",le="1.56384e+07"} 2196
-aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",storage_type="device",le="1.9008e+07"} 4041
-aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",storage_type="device",le="+Inf"} 4041
-aerospike_ttl_kib_hist_sum{namespace="myNS",set="Beans",storage_type="device"} 5.244241494e+10
-aerospike_ttl_kib_hist_count{namespace="myNS",set="Beans",storage_type="device"} 4041
+aerospike_ttl_build_info{version="4.1.3"} 1
+aerospike_ttl_default_ttl_seconds{namespace="myNS"} 2851200
+aerospike_ttl_min_ttl_seconds{namespace="myNS",set="Beans"} 1.3824e+07
+aerospike_ttl_max_ttl_seconds{namespace="myNS",set="Beans"} 1.9008e+07
+aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",le="160"} 858
+aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",le="170"} 901
+aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",le="181"} 971
+aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",le="220"} 1004
+aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",le="+Inf"} 1004
+aerospike_ttl_counts_hist_sum{namespace="myNS",set="Beans",ttlUnit="days"} 9.037094916e+09
+aerospike_ttl_counts_hist_count{namespace="myNS",set="Beans",ttlUnit="days"} 1004
+aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",storage_type="recordsize",le="160"} 1938
+aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",storage_type="recordsize",le="220"} 4041
+aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",storage_type="recordsize",le="+Inf"} 4041
+aerospike_ttl_kib_hist_sum{namespace="myNS",set="Beans",ttlUnit="days",storage_type="recordsize"} 5.244241494e+10
+aerospike_ttl_kib_hist_count{namespace="myNS",set="Beans",ttlUnit="days",storage_type="recordsize"} 4041
+aerospike_ttl_size_bytes_hist_bucket{namespace="myNS",set="Beans",metadata_op="recordsize",le="1"} 0
+aerospike_ttl_size_bytes_hist_bucket{namespace="myNS",set="Beans",metadata_op="recordsize",le="5.879"} 12
+aerospike_ttl_size_bytes_hist_bucket{namespace="myNS",set="Beans",metadata_op="recordsize",le="+Inf"} 4041
 aerospike_ttl_scan_last_updated{namespace="myNS",set="Beans"} 1.690408779e+09
 aerospike_ttl_scan_time_seconds{namespace="myNS",set="Beans"} 103
 ```
 
-# To use:
-1) Grab a release from https://github.com/Alb0t/aerospike-ttl-exporter/releases
-2) Extract and create a config file
-3) Run the binary pointing to the config file, or create a systemd service file.
+## Usage
 
-
-# Usage/params:
 ```
 Usage of ./aerospike-ttl-exporter:
   -configFile string
     Path to the config file for the exporter. (Default: "/etc/ttl-aerospike-exporter.yaml")
 ```
-## configFile
-The config file should be yaml and following a very strict pattern/layout. You can download the conf.yaml file in the repo and change it to suit your needs.
-There are _NO DEFAULT VALUES_ because of the way golang works with reading yaml. Any key/value omitted, or misspelled, will result in that value being set to the type's default. Ex. if scanPercent is omitted it will be set to 0. If set is omitted it will be set to "". Data types can be found in collector.go in the declared structs, and you can find the defaults in golang if you want. Basically, don't mispell anything or leave anything out.
 
-The program will print all its realized config values before each scan to stdout if running in debug mode.
-ex.
+1. Grab a release from https://github.com/Alb0t/aerospike-ttl-exporter/releases
+2. Create a config file (see `conf.yaml`)
+3. Run the binary: `./aerospike-ttl-exporter -configFile /path/to/conf.yaml`
+
+The config file is YAML. There are **no default values** — any omitted or misspelled key gets Go's zero value for that type (e.g. `0` for `int`, `""` for `string`). Don't omit fields or misspell them.
+
+## Operating modes
+
+### Legacy mode (`autoDiscover: false`)
+
+List every namespace/set and its TTL bucket boundaries explicitly under `monitor:`. Only those entries are scanned.
+
+### Auto-discovery mode (`autoDiscover: true`)
+
+The exporter asks Aerospike which namespaces and sets exist, reads each set's TTL distribution, and builds histogram bucket configuration automatically.
+
+**How it works:**
+
+1. Enumerates namespaces (`namespaces` info command) and the sets in each (`sets/<ns>`).
+2. For each namespace, checks for set-less records (the "null set") by comparing namespace total objects to the sum of per-set objects. If set-less records exist, a synthetic null-set entry is added (scanned with a server-side filter to count only set-less records).
+3. Reads each namespace's `default-ttl` and each set's TTL histogram (`histogram:namespace=<ns>;set=<set>;type=ttl`).
+4. Fits **linear** histogram buckets to the observed min/max populated TTL. `discoveryBucketCount` sets the number of bins; `n+1` edges span `[minTTL, maxTTL]` inclusive so the densest top TTLs land in a real bucket, not `+Inf`.
+5. `discoveryRangePaddingPct` extends each fitted top edge by that percentage. Aerospike's TTL histogram rescales dynamically, so between discovery passes the live max TTL can drift above the observed max and spill into `+Inf`; padding leaves headroom. Pair with a short `discoveryIntervalSecs` to re-fit before drift grows large.
+6. Picks the display unit from the magnitude of the observed max TTL: `>2d → days`, `>2h → hours`, else `seconds`.
+
+**Scheduling:** Discovery runs on its own interval (`discoveryIntervalSecs`, defaults to `frequencySecs`) independent of the scan cadence. It runs once synchronously at startup so metrics are populated before the first scan, then periodically. Only unregisters/re-registers collectors when the computed bucket signature actually changes — no churn when the distribution is stable.
+
+**Resilience:** Each info command retries with exponential backoff (500ms → 4s) for up to 30 seconds. If any call fails after the retry window, the entire discovery pass is skipped and the previous registry is kept — a transient blip won't prune healthy sets.
+
+**Pruning:** Sets that no longer exist on the Aerospike node are dropped from the registry, and their gauge series (`min_ttl_seconds`, `max_ttl_seconds`, `scan_time_seconds`, `scan_last_updated`) are deleted. The per-namespace `default_ttl_seconds` gauge is deleted once no sets survive in that namespace.
+
+**Overrides:** `monitor:` entries whose `namespace` + `set` match a discovered set override the discovered/default config **field-by-field**. Only fields explicitly set in the entry replace the default; everything else stays discovered. Bucket config blocks (`ttlBuckets`, `sizeBuckets`) replace wholesale when overridden (no field-by-field merge within a block).
+
+**Never-expire sets:** A set with `default-ttl=0` and an empty TTL histogram is treated as non-expirable — its TTL histograms (`counts_hist`, `kib_hist`) are skipped, but `size_bytes_hist` is still registered if enabled.
+
+When `autoDiscover` is `false` the exporter behaves exactly as before and only scans the explicit `monitor:` entries.
+
+## Bucket configuration
+
+TTL histograms (`counts_hist`, `kib_hist`) and the size histogram (`size_bytes_hist`) share one unified bucket schema. Each set (or `discoveryDefaults`, or a `monitor:` override) carries up to two blocks:
+
+- `ttlBuckets` — boundaries for the TTL histograms. Values may carry an `s`/`h`/`d` suffix; the suffix sets the `ttlUnit` label and the seconds divisor.
+- `sizeBuckets` — boundaries for the record-size histogram, in raw bytes.
+
+Both use the same `mode`-driven shape:
+
+| Mode | Fields | Meaning |
+|------|--------|---------|
+| `static` | `static: [...]` | Explicit list of bucket boundaries. |
+| `linear` | `start`, `width`, `count` | `prometheus.LinearBuckets(start, width, count)` |
+| `exponential` | `min`, `max`, `count` | `prometheus.ExponentialBucketsRange(min, max, count)` |
+| `auto` | — | **ttlBuckets only.** Discovery fits linear buckets to the live TTL histogram. Fatal if used on `sizeBuckets`. |
+
+### Examples
+
+```yaml
+ttlBuckets:
+  mode: static
+  static: [1d, 3d, 5d, 7d, 14d]
+
+ttlBuckets:
+  mode: linear
+  start: 180d
+  width: 10d
+  count: 10
+
+sizeBuckets:
+  mode: exponential
+  min: 1
+  max: 8389000
+  count: 10
+```
+
+### Validation
+
+Config is validated on load. Fatal startup errors for:
+
+- `discoveryBucketCount <= 0` when `autoDiscover: true`
+- `mode: auto` on `sizeBuckets`
+- `mode: static` with empty list
+- `mode: linear` missing `start`, `width`, or `count <= 0`
+- `mode: exponential` with `min <= 0`, `max <= min`, or `count <= 0`
+- `sizeHistogramEnabled: true` without a `sizeBuckets` mode
+- `autoDiscover: false` with any `monitor:` entry missing an explicit `ttlBuckets` mode (or using `auto`/empty)
+
+## Configuration reference
+
+See `conf.yaml` for a fully commented example.
+
+### `service:` block
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `listenPort` | string | Address to bind the `/metrics` HTTP endpoint (e.g. `:9634`). |
+| `aerospikeAddr` | string | Aerospike host to connect to. |
+| `aerospikePort` | int | Aerospike port. |
+| `skipNodeCheck` | bool | Skip local-node verification. **Dangerous in production** — disables the guard ensuring scans only hit the co-located node. |
+| `failOnClusterChange` | bool | (Reserved.) |
+| `frequencySecs` | int | Seconds between scan cycles. Scans do not overlap; if a cycle is still running when the next fires, it is skipped. |
+| `verbose` | bool | Enable debug-level logging. |
+| `username` | string | Aerospike username (omit if auth not enabled). |
+| `password` | string | Aerospike password (only considered if `username` is set). |
+| `autoDiscover` | bool | Enable auto-discovery mode. |
+| `discoveryIntervalSecs` | int | Seconds between discovery/re-fit passes. Defaults to `frequencySecs` if unset or `<= 0`. |
+| `discoveryBucketCount` | int | Number of linear TTL bins per discovered set. |
+| `discoveryRangePaddingPct` | int | Percentage to extend each fitted range's top edge for headroom. `0` = none. |
+| `discoveryDefaults` | monconf | Base scan/perf/feature settings applied to every discovered set (same shape as a `monitor:` entry, minus `namespace`/`set`). |
+
+### `monitor:` entries
+
+Each entry targets one namespace/set. In auto-discovery mode they act as per-set overrides (field-by-field). In legacy mode they are the only sets scanned.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `namespace` | string | Aerospike namespace. |
+| `set` | string | Set name. Use `null` for namespace-level scan (all records including null set). |
+| `recordCount` | int | Stop scanning after this many exported records. `-1` = no cap. |
+| `scanPercent` | float | Percentage of data to scan (approximated via `MaxRecords`). `0` or `-1` = disabled. Works alongside `recordCount`; scan stops at whichever limit is reached first. |
+| `reportCount` | int | Log progress every N exported records (when `verbose: true`). |
+| `scanTotalTimeout` | string | Go duration (e.g. `20m`, `1h30s`). Total scan timeout. |
+| `scanSocketTimeout` | string | Per-socket timeout. |
+| `policyTotalTimeout` | string | Policy total timeout (for metadata reads). |
+| `policySocketTimeout` | string | Policy socket timeout. |
+| `recordsPerSecond` | int | Server-side RPS throttle. `0` = unlimited. |
+| `kbyteHistogramEnabled` | bool | Enable `kib_hist` (bytes-per-TTL-bucket). |
+| `kbyteHistogramResolution` | float | KiB step for the byte histogram observe loop. Lower = higher resolution but more CPU. Recommend `0.334` (334-byte resolution). Max resolution `0.001`. |
+| `sizeHistogramEnabled` | bool | Enable `size_bytes_hist` (record-size distribution). |
+| `ttlBuckets` | bucketConfig | TTL histogram bucket config (see Bucket configuration). |
+| `sizeBuckets` | bucketConfig | Size histogram bucket config (see Bucket configuration). |
+
+## Debug logging
+
+When `verbose: true`, the exporter logs each set's resolved config and scan lifecycle. In auto-discovery mode it also logs the fitted buckets per set:
 
 ```
-...
-time="2021-03-23T15:16:09-06:00" level=debug msg="Printing namespaces to monitor and their config below."
-time="2021-03-23T15:16:09-06:00" level=debug msg="{Namespace:mynamespace Set:User Recordcount:-1 ScanPercent:1 ExportPercentages:true ExportRecordCount:false ExportType:days ExportTypeDivision:86400 ExportBucketMultiply:1 ReportCount:100 ScanPriority:1 ScanTotalTimeout:20m ScanSocketTimeout:20m PolicyTotalTimeout:20m PolicySocketTimeout:20m RecordsPerSecond:500}"
-time="2021-03-23T15:16:09-06:00" level=debug msg="Running:true"
-time="2021-03-23T15:16:09-06:00" level=debug msg="Finding local node."
-time="2021-03-23T15:16:09-06:00" level=debug msg="Fetching membership list.."
-time="2021-03-23T15:16:09-06:00" level=debug msg="Looping through active cluster nodes"
-time="2021-03-23T15:16:09-06:00" level=debug msg="Comparing against local ip list.."
-time="2021-03-23T15:16:09-06:00" level=debug msg="found node with matching localip 127.0.0.1==BB9020014AC4202 127.0.0.1:3000"
-time="2021-03-23T15:16:09-06:00" level=info msg="Begin scan/inspection." namespace=mynamespace set=User
-time="2021-03-23T15:16:09-06:00" level=debug msg="Setting max records to 100 based off sample percent 1"
-...
+level=info msg="Discovery: myns:myset — 11 buckets [50.4..67.5] days (default-ttl=604800s)"
+level=info msg="Discovery: reconciled 33 set(s) across 2 namespace(s)"
+level=info msg="Begin scan/inspection." namespace=myns set=myset
+level=info msg="Scan complete." namespace=myns set=myset total(records exported)=42 totalInspected=42
 ```
 
-# Notes
+## Read-only guarantee
 
-`staticBucketList` and `bucketWidth/numberOfBucketsToExport` are mutually exclusive. You must pick one or the other. Program will fail to start with a fatal log message if you try to specify both.
+The exporter only **scans** Aerospike — it never writes. Record size is read with a metadata-only `Operate` that carries `TTLDontUpdate`, so even the touched record's TTL/generation is left alone.
 
-`staticBucketList` accepts an array of buckets you wish to define for the histogram.
+`scripts/gen-stability-test.sh` is the end-to-end proof. It is **hermetic**: spins up an ephemeral community-edition Aerospike in Docker (no host, no creds), seeds a canary record, pins its `gen`, runs the real exporter binary for a bounded scan window, then re-reads `gen`. Unchanged `gen` = read-only (PASS); changed `gen` = exporter wrote (FAIL). The test also fails if the exporter dies before scanning, so an unchanged `gen` can never be a false pass.
 
-Alternatively, you can use `bucketWidth` `numberOfBucketsToExport` and `bucketStart` to specify a linear histogram.  
+## Testing
+
+```bash
+just test        # unit tests: bucket resolvers, gauges, discovery, config decode
+just gen-check   # e2e read-only proof (hermetic; needs docker + go on PATH)
+```
+
+`just test` runs `go test ./...`. `just gen-check` runs the read-only safety test — it spins up a throwaway Aerospike in Docker and tears it down. Both need `docker` + `go` on PATH.
+
+### Other `just` recipes
+
+```bash
+just build                    # cross-compile linux/amd64 binary
+just deploy <hostname>        # build, scp, and run on a remote host
+just run-remote <hostname>    # run locally against a remote Aerospike node
+```
+
+Set `AS_USER`/`AS_PASS` env vars to override Aerospike credentials for `deploy` and `run-remote`.
+
+## Graceful shutdown
+
+The exporter handles `SIGINT`/`SIGTERM`: stops scheduler jobs, drains the HTTP server (5s timeout), and exits cleanly.
