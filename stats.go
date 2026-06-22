@@ -409,7 +409,17 @@ func (r *ttlRange) publish(namespace, set string) {
 // toward the exported total). Non-expirable records are skipped.
 func processRecord(rec *as.Result, element monconf, hs *histSet, ttls *ttlRange) bool {
 	if rec.Record.Expiration == NON_EXPIRABLE_TTL_VALUE {
-		// non-expirable record; the Aerospike server already has a log ticket for this.
+		// size histograms are still recorded for non-expirable records; kbyte is skipped
+		// since it requires a meaningful TTL value as the observed dimension.
+		if element.SizeHistogramEnabled && hs.sizes != nil {
+			recordsize, err := measureRecordSize(client.Load(), rec.Record.Key, measureOps, opPolicy)
+			if err != nil && err != as.ErrKeyNotFound {
+				logrus.Errorf("Failure fetching record size. Err: %v", err)
+			}
+			if recordsize != 0 {
+				hs.sizes.WithLabelValues("recordsize").Observe(float64(recordsize))
+			}
+		}
 		return false
 	}
 	ttls.observe(rec.Record.Expiration)
