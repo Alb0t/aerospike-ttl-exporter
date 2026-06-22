@@ -15,6 +15,20 @@ vers="${1:?usage: scripts/release.sh vX.Y.Z}"
 cd "$(cd "$(dirname "$0")/.." && pwd)" # repo root
 
 [[ -z "$(git status --porcelain)" ]] || { echo "working tree dirty — commit or stash first"; exit 1; }
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+git fetch origin "${branch}" --quiet
+local_sha="$(git rev-parse HEAD)"
+remote_sha="$(git rev-parse "origin/${branch}")"
+if [[ "${local_sha}" != "${remote_sha}" ]]; then
+  echo "local ${branch} (${local_sha:0:7}) != origin/${branch} (${remote_sha:0:7}) — pull or push first"
+  exit 1
+fi
+
+if git tag --points-at HEAD | grep -q '^v'; then
+  echo "HEAD already tagged: $(git tag --points-at HEAD | grep '^v' | tr '\n' ' ')— bump a commit first"
+  exit 1
+fi
 unformatted="$(gofmt -l .)"; [[ -z "${unformatted}" ]] || { echo "gofmt needed: ${unformatted}"; exit 1; }
 go vet ./...
 go test ./...
