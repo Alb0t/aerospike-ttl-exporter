@@ -17,7 +17,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)" # repo root
 [[ -z "$(git status --porcelain)" ]] || { echo "working tree dirty — commit or stash first"; exit 1; }
 
 branch="$(git rev-parse --abbrev-ref HEAD)"
-git fetch origin "${branch}" --quiet
+git fetch origin "${branch}" --quiet --no-tags
 local_sha="$(git rev-parse HEAD)"
 remote_sha="$(git rev-parse "origin/${branch}")"
 if [[ "${local_sha}" != "${remote_sha}" ]]; then
