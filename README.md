@@ -107,27 +107,27 @@ All metrics are in the `aerospike_ttl_` namespace.
 ### Example output
 
 ```
-aerospike_ttl_build_info{version="4.1.3"} 1
-aerospike_ttl_default_ttl_seconds{namespace="myNS"} 2851200
-aerospike_ttl_min_ttl_seconds{namespace="myNS",set="Beans"} 1.3824e+07
-aerospike_ttl_max_ttl_seconds{namespace="myNS",set="Beans"} 1.9008e+07
-aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",le="160"} 858
-aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",le="170"} 901
-aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",le="181"} 971
-aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",le="220"} 1004
-aerospike_ttl_counts_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",le="+Inf"} 1004
-aerospike_ttl_counts_hist_sum{namespace="myNS",set="Beans",ttlUnit="days"} 9.037094916e+09
-aerospike_ttl_counts_hist_count{namespace="myNS",set="Beans",ttlUnit="days"} 1004
-aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",storage_type="recordsize",le="160"} 1938
-aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",storage_type="recordsize",le="220"} 4041
-aerospike_ttl_kib_hist_bucket{namespace="myNS",set="Beans",ttlUnit="days",storage_type="recordsize",le="+Inf"} 4041
-aerospike_ttl_kib_hist_sum{namespace="myNS",set="Beans",ttlUnit="days",storage_type="recordsize"} 5.244241494e+10
-aerospike_ttl_kib_hist_count{namespace="myNS",set="Beans",ttlUnit="days",storage_type="recordsize"} 4041
-aerospike_ttl_size_bytes_hist_bucket{namespace="myNS",set="Beans",metadata_op="recordsize",le="1"} 0
-aerospike_ttl_size_bytes_hist_bucket{namespace="myNS",set="Beans",metadata_op="recordsize",le="5.879"} 12
-aerospike_ttl_size_bytes_hist_bucket{namespace="myNS",set="Beans",metadata_op="recordsize",le="+Inf"} 4041
-aerospike_ttl_scan_last_updated{namespace="myNS",set="Beans"} 1.690408779e+09
-aerospike_ttl_scan_time_seconds{namespace="myNS",set="Beans"} 103
+aerospike_ttl_build_info{version="dev"} 1
+aerospike_ttl_default_ttl_seconds{namespace="test"} 0
+aerospike_ttl_min_ttl_seconds{namespace="test",set="myset"} 86374
+aerospike_ttl_max_ttl_seconds{namespace="test",set="myset"} 86374
+aerospike_ttl_counts_hist_bucket{namespace="test",set="myset",ttlUnit="hours",le="23.76"} 0
+aerospike_ttl_counts_hist_bucket{namespace="test",set="myset",ttlUnit="hours",le="24.384"} 200
+aerospike_ttl_counts_hist_bucket{namespace="test",set="myset",ttlUnit="hours",le="+Inf"} 200
+aerospike_ttl_counts_hist_sum{namespace="test",set="myset",ttlUnit="hours"} 4799.083333333327
+aerospike_ttl_counts_hist_count{namespace="test",set="myset",ttlUnit="hours"} 200
+aerospike_ttl_kib_hist_bucket{namespace="test",set="myset",storage_type="recordsize",ttlUnit="hours",le="23.76"} 0
+aerospike_ttl_kib_hist_bucket{namespace="test",set="myset",storage_type="recordsize",ttlUnit="hours",le="24.384"} 16
+aerospike_ttl_kib_hist_bucket{namespace="test",set="myset",storage_type="recordsize",ttlUnit="hours",le="+Inf"} 16
+aerospike_ttl_kib_hist_sum{namespace="test",set="myset",storage_type="recordsize",ttlUnit="hours"} 382.4269531249998
+aerospike_ttl_kib_hist_count{namespace="test",set="myset",storage_type="recordsize",ttlUnit="hours"} 16
+aerospike_ttl_size_bytes_hist_bucket{metadata_op="recordsize",namespace="test",set="myset",le="34.56227054460177"} 0
+aerospike_ttl_size_bytes_hist_bucket{metadata_op="recordsize",namespace="test",set="myset",le="203.19049958682461"} 200
+aerospike_ttl_size_bytes_hist_bucket{metadata_op="recordsize",namespace="test",set="myset",le="+Inf"} 200
+aerospike_ttl_size_bytes_hist_sum{metadata_op="recordsize",namespace="test",set="myset"} 16320
+aerospike_ttl_size_bytes_hist_count{metadata_op="recordsize",namespace="test",set="myset"} 200
+aerospike_ttl_scan_last_updated{namespace="test",set="myset"} 1.782252482e+09
+aerospike_ttl_scan_time_seconds{namespace="test",set="myset"} 0
 ```
 
 ## Usage

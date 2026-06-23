@@ -149,8 +149,14 @@ check_histogram() {
 }
 
 check_histogram "aerospike_ttl_counts_hist" "${CANARY_COUNT}"
-check_histogram "aerospike_ttl_kib_hist" "${CANARY_COUNT}"
+# kib_hist _count is total KiB (size-weighted), NOT record count, so it cannot be
+# compared against CANARY_COUNT. Sub-KiB canaries could sum below the record count
+# yet still be correct. Require only that it produced a positive size-weighted total.
+check_histogram "aerospike_ttl_kib_hist" 1
 check_histogram "aerospike_ttl_size_bytes_hist" "${CANARY_COUNT}"
+
+echo "==> sample /metrics lines (illustrative output):"
+echo "${metrics}" | grep -E "^aerospike_ttl_"
 
 # --- Stop exporter, check gens ---
 kill "${exporter_pid}" 2>/dev/null || true
