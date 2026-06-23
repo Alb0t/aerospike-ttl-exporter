@@ -17,8 +17,8 @@ deploy hostname:
     if [[ -n "${AS_USER:-}" || -n "${AS_PASS:-}" ]]; then
         deploy_config="/tmp/.deploy-conf-$$.yaml"
         cp {{config}} "$deploy_config"
-        [[ -n "${AS_USER:-}" ]] && sed -i'' -e "s/^ *username:.*/  username: $AS_USER/" "$deploy_config"
-        [[ -n "${AS_PASS:-}" ]] && sed -i'' -e "s/^ *password:.*/  password: $AS_PASS/" "$deploy_config"
+        [[ -n "${AS_USER:-}" ]] && sed -i'' -e "s|^ *username:.*|  username: $AS_USER|" "$deploy_config"
+        [[ -n "${AS_PASS:-}" ]] && sed -i'' -e "s|^ *password:.*|  password: $AS_PASS|" "$deploy_config"
         trap 'rm -f "$deploy_config"' EXIT
     fi
     echo "==> Deploying to {{ssh_user}}@{{hostname}}:{{remote_dir}}/"
@@ -39,8 +39,8 @@ run-remote remotenode:
     run_config="/tmp/testconf-local.yaml"
     sed 's/aerospikeAddr:.*/aerospikeAddr: {{remotenode}}/' {{config}} > "$run_config"
     if [[ -n "${AS_USER:-}" || -n "${AS_PASS:-}" ]]; then
-        [[ -n "${AS_USER:-}" ]] && sed -i'' -e "s/^ *username:.*/  username: $AS_USER/" "$run_config"
-        [[ -n "${AS_PASS:-}" ]] && sed -i'' -e "s/^ *password:.*/  password: $AS_PASS/" "$run_config"
+        [[ -n "${AS_USER:-}" ]] && sed -i'' -e "s|^ *username:.*|  username: $AS_USER|" "$run_config"
+        [[ -n "${AS_PASS:-}" ]] && sed -i'' -e "s|^ *password:.*|  password: $AS_PASS|" "$run_config"
     fi
     echo "==> Running against {{remotenode}} (config: $run_config)"
     go run . -configFile "$run_config"

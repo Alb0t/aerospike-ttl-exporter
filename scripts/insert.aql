@@ -1,13 +1,24 @@
-# Seed the gen-stability canary. Writing the record bumps its gen; the test
-# asserts gen is UNCHANGED after the exporter scans it (proving read-only).
+# Seed gen-stability canary records. Writing bumps gen; the test asserts gen is
+# UNCHANGED after the exporter scans them (proving read-only).
 #
-# SET RECORD_TTL gives the canary a positive TTL (86400s = 1 day) so it is
+# SET RECORD_TTL gives each canary a positive TTL (86400s = 1 day) so they are
 # EXPIRABLE. This matters: stats.go's processRecord returns early for
-# non-expirable records BEFORE the size path, so a TTL-less canary never
-# exercised the metadata-only client.Operate read (measureRecordSize). With a
-# positive TTL and docker-test.yaml's sizeHistogramEnabled:true, the scan now
-# runs that Operate path, and the unchanged-gen assertion proves it is read-only
-# too. The TTL (1 day) is far larger than the scan window (RUN_SECS default 20s),
-# so the canary cannot expire/evict mid-test.
+# non-expirable records BEFORE the kbyte path, so TTL-less canaries never
+# exercise the metadata-only client.Operate read (measureRecordSize). With a
+# positive TTL and docker-test.yaml's sizeHistogramEnabled + kbyteHistogramEnabled,
+# the scan runs that Operate path for every record, and the unchanged-gen
+# assertion proves it is read-only too. The TTL (1 day) is far larger than the
+# scan window (RUN_SECS default 20s), so canaries cannot expire/evict mid-test.
+#
+# 10 records with varying bin sizes give histograms non-trivial data to bucket.
 SET RECORD_TTL 86400
-INSERT INTO test.myset (PK,mybin) VALUES ('canary1',2)
+INSERT INTO test.myset (PK,mybin) VALUES ('canary01','a')
+INSERT INTO test.myset (PK,mybin) VALUES ('canary02','ab')
+INSERT INTO test.myset (PK,mybin) VALUES ('canary03','abc')
+INSERT INTO test.myset (PK,mybin) VALUES ('canary04','abcd')
+INSERT INTO test.myset (PK,mybin) VALUES ('canary05','abcde')
+INSERT INTO test.myset (PK,mybin) VALUES ('canary06','abcdef')
+INSERT INTO test.myset (PK,mybin) VALUES ('canary07','abcdefg')
+INSERT INTO test.myset (PK,mybin) VALUES ('canary08','abcdefgh')
+INSERT INTO test.myset (PK,mybin) VALUES ('canary09','abcdefghi')
+INSERT INTO test.myset (PK,mybin) VALUES ('canary10','abcdefghij')

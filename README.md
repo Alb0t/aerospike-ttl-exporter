@@ -18,7 +18,7 @@ A custom exporter that samples records on each server on a schedule and exports 
 
 ## Example queries
 
-### How large are the users in the fresh TTL range?
+### How large are the records in the fresh TTL range?
 ```promql
 # Scenario: default-ttl=33d
 histogram_quantile(0.50, sum(rate(aerospike_ttl_kib_hist_bucket{namespace="myns"}[$__rate_interval])) by (le))
@@ -80,7 +80,7 @@ All metrics are in the `aerospike_ttl_` namespace.
 | Metric | Labels | Description |
 |--------|--------|-------------|
 | `counts_hist` | `namespace`, `set`, `ttlUnit` | Records per TTL bucket. |
-| `kib_hist` | `namespace`, `set`, `ttlUnit`, `storage_type` | Bytes per TTL bucket (`storage_type=recordsize`). Requires `kbyteHistogramEnabled: true`. |
+| `kib_hist` | `namespace`, `set`, `ttlUnit`, `storage_type` | KiB per TTL bucket, size-weighted (`storage_type=recordsize`). Requires `kbyteHistogramEnabled: true`. |
 | `size_bytes_hist` | `namespace`, `set`, `metadata_op` | Record size distribution in raw bytes (`metadata_op=recordsize`). Requires `sizeHistogramEnabled: true`. Uses `sizeBuckets` config. |
 
 ### Per-set gauges
@@ -262,8 +262,7 @@ Each entry targets one namespace/set. In auto-discovery mode they act as per-set
 | `policyTotalTimeout` | string | Policy total timeout (for metadata reads). |
 | `policySocketTimeout` | string | Policy socket timeout. |
 | `recordsPerSecond` | int | Server-side RPS throttle. `0` = unlimited. |
-| `kbyteHistogramEnabled` | bool | Enable `kib_hist` (bytes-per-TTL-bucket). |
-| `kbyteHistogramResolution` | float | KiB step for the byte histogram observe loop. Lower = higher resolution but more CPU. Recommend `0.334` (334-byte resolution). Max resolution `0.001`. |
+| `kbyteHistogramEnabled` | bool | Enable `kib_hist` (size-weighted TTL histogram). Bucket counts represent total KiB per TTL bucket, O(1) per record. |
 | `sizeHistogramEnabled` | bool | Enable `size_bytes_hist` (record-size distribution). |
 | `ttlBuckets` | bucketConfig | TTL histogram bucket config (see Bucket configuration). |
 | `sizeBuckets` | bucketConfig | Size histogram bucket config (see Bucket configuration). |
@@ -283,7 +282,11 @@ level=info msg="Scan complete." namespace=myns set=myset total(records exported)
 
 The exporter only **scans** Aerospike — it never writes. Record size is read with a metadata-only `Operate` that carries `TTLDontUpdate`, so even the touched record's TTL/generation is left alone.
 
-`scripts/gen-stability-test.sh` is the end-to-end proof. It is **hermetic**: spins up an ephemeral community-edition Aerospike in Docker (no host, no creds), seeds a canary record, pins its `gen`, runs the real exporter binary for a bounded scan window, then re-reads `gen`. Unchanged `gen` = read-only (PASS); changed `gen` = exporter wrote (FAIL). The test also fails if the exporter dies before scanning, so an unchanged `gen` can never be a false pass.
+`scripts/gen-stability-test.sh` is the end-to-end proof. It is **hermetic**: spins up an ephemeral enterprise-edition Aerospike in Docker (single-node, no license needed), seeds 10 canary records with a positive TTL, runs the real exporter binary with all histogram types enabled (`counts_hist`, `kib_hist`, `size_bytes_hist`), then:
+
+1. Scrapes `/metrics` and asserts every histogram has `>= 10` observations — the exporter must actually produce histograms for the gen check to be meaningful.
+2. Re-reads `gen` for all 10 canaries. Any change = exporter wrote (FAIL).
+3. Runs a negative control: deliberately writes a canary and confirms the gen comparison detects it, proving the harness can't false-pass.
 
 ## Testing
 

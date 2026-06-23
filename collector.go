@@ -131,21 +131,20 @@ type bucketConfig struct {
 }
 
 type monconf struct {
-	Namespace                string       `yaml:"namespace"`
-	Set                      string       `yaml:"set"`
-	Recordcount              int          `yaml:"recordCount,omitempty"`
-	ScanPercent              float64      `yaml:"scanPercent,omitempty"`
-	ReportCount              int          `yaml:"reportCount,omitempty"`
-	ScanTotalTimeout         string       `yaml:"scanTotalTimeout"`
-	ScanSocketTimeout        string       `yaml:"scanSocketTimeout"`
-	PolicyTotalTimeout       string       `yaml:"policyTotalTimeout"`
-	PolicySocketTimeout      string       `yaml:"policySocketTimeout"`
-	RecordsPerSecond         int          `yaml:"recordsPerSecond"`
-	KByteHistogramEnabled    bool         `yaml:"kbyteHistogramEnabled,omitempty"`
-	KByteHistogramResolution float64      `yaml:"kbyteHistogramResolution,omitempty"`
-	SizeHistogramEnabled     bool         `yaml:"sizeHistogramEnabled"`
-	TTLBuckets               bucketConfig `yaml:"ttlBuckets"`
-	SizeBuckets              bucketConfig `yaml:"sizeBuckets"`
+	Namespace             string       `yaml:"namespace"`
+	Set                   string       `yaml:"set"`
+	Recordcount           int          `yaml:"recordCount,omitempty"`
+	ScanPercent           float64      `yaml:"scanPercent,omitempty"`
+	ReportCount           int          `yaml:"reportCount,omitempty"`
+	ScanTotalTimeout      string       `yaml:"scanTotalTimeout"`
+	ScanSocketTimeout     string       `yaml:"scanSocketTimeout"`
+	PolicyTotalTimeout    string       `yaml:"policyTotalTimeout"`
+	PolicySocketTimeout   string       `yaml:"policySocketTimeout"`
+	RecordsPerSecond      int          `yaml:"recordsPerSecond"`
+	KByteHistogramEnabled bool         `yaml:"kbyteHistogramEnabled,omitempty"`
+	SizeHistogramEnabled  bool         `yaml:"sizeHistogramEnabled"`
+	TTLBuckets            bucketConfig `yaml:"ttlBuckets"`
+	SizeBuckets           bucketConfig `yaml:"sizeBuckets"`
 }
 
 // monconfOverride mirrors monconf but with pointer fields for every
@@ -154,21 +153,20 @@ type monconf struct {
 // override a discovered/default set's config field-by-field. Namespace and Set
 // are plain strings because they are the match key, not overridable values.
 type monconfOverride struct {
-	Namespace                string        `yaml:"namespace"`
-	Set                      string        `yaml:"set"`
-	Recordcount              *int          `yaml:"recordCount,omitempty"`
-	ScanPercent              *float64      `yaml:"scanPercent,omitempty"`
-	ReportCount              *int          `yaml:"reportCount,omitempty"`
-	ScanTotalTimeout         *string       `yaml:"scanTotalTimeout,omitempty"`
-	ScanSocketTimeout        *string       `yaml:"scanSocketTimeout,omitempty"`
-	PolicyTotalTimeout       *string       `yaml:"policyTotalTimeout,omitempty"`
-	PolicySocketTimeout      *string       `yaml:"policySocketTimeout,omitempty"`
-	RecordsPerSecond         *int          `yaml:"recordsPerSecond,omitempty"`
-	KByteHistogramEnabled    *bool         `yaml:"kbyteHistogramEnabled,omitempty"`
-	KByteHistogramResolution *float64      `yaml:"kbyteHistogramResolution,omitempty"`
-	SizeHistogramEnabled     *bool         `yaml:"sizeHistogramEnabled,omitempty"`
-	TTLBuckets               *bucketConfig `yaml:"ttlBuckets,omitempty"`
-	SizeBuckets              *bucketConfig `yaml:"sizeBuckets,omitempty"`
+	Namespace             string        `yaml:"namespace"`
+	Set                   string        `yaml:"set"`
+	Recordcount           *int          `yaml:"recordCount,omitempty"`
+	ScanPercent           *float64      `yaml:"scanPercent,omitempty"`
+	ReportCount           *int          `yaml:"reportCount,omitempty"`
+	ScanTotalTimeout      *string       `yaml:"scanTotalTimeout,omitempty"`
+	ScanSocketTimeout     *string       `yaml:"scanSocketTimeout,omitempty"`
+	PolicyTotalTimeout    *string       `yaml:"policyTotalTimeout,omitempty"`
+	PolicySocketTimeout   *string       `yaml:"policySocketTimeout,omitempty"`
+	RecordsPerSecond      *int          `yaml:"recordsPerSecond,omitempty"`
+	KByteHistogramEnabled *bool         `yaml:"kbyteHistogramEnabled,omitempty"`
+	SizeHistogramEnabled  *bool         `yaml:"sizeHistogramEnabled,omitempty"`
+	TTLBuckets            *bucketConfig `yaml:"ttlBuckets,omitempty"`
+	SizeBuckets           *bucketConfig `yaml:"sizeBuckets,omitempty"`
 }
 
 // resolve produces a concrete monconf by starting from base and overwriting only
@@ -188,7 +186,6 @@ func (o monconfOverride) resolve(base monconf) monconf {
 	setIfPresent(&m.PolicySocketTimeout, o.PolicySocketTimeout)
 	setIfPresent(&m.RecordsPerSecond, o.RecordsPerSecond)
 	setIfPresent(&m.KByteHistogramEnabled, o.KByteHistogramEnabled)
-	setIfPresent(&m.KByteHistogramResolution, o.KByteHistogramResolution)
 	setIfPresent(&m.SizeHistogramEnabled, o.SizeHistogramEnabled)
 	// Bucket configs replace wholesale (no field-by-field merge within a block):
 	// a non-nil override block entirely supplants the default.

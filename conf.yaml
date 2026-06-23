@@ -59,7 +59,7 @@ service:
 
 monitor:
   - namespace: mynamespace
-    set: User # what setname to scan? use `null` (without ticks) to just report on a namespace level
+    set: myset # what setname to scan? use `null` (without ticks) to just report on a namespace level
     recordCount: 50000 # How many records to stop scanning at? If both recordCount and scanPercent are set, the scan stops at whichever limit is reached first.
     scanPercent: 1.1 # what percentage of data to scan? Set to 0 or -1 to disable. Works alongside recordCount.
     reportCount: 300000 # How many records should be report on? Every <x> records will cause an entry in the stdout (default 300000)
@@ -67,7 +67,7 @@ monitor:
     scanSocketTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
     policyTotalTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
     policySocketTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
-    RecordsPerSecond: 0 # Limit the records per second returned by Aerospike server to the exporter. 0 means no limit.
+    recordsPerSecond: 0 # Limit the records per second returned by Aerospike server to the exporter. 0 means no limit.
     # ttlBuckets: TTL histogram boundaries. mode = static|linear|exponential|auto
     # (auto only valid under discoveryDefaults). static values may carry an "s",
     # "h", or "d" suffix; do not mix suffixes within one list.
@@ -95,16 +95,9 @@ monitor:
     scanSocketTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
     policyTotalTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
     policySocketTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
-    RecordsPerSecond: 100 # Utilizes the scan policy to limit RPS.
+    recordsPerSecond: 100 # Utilizes the scan policy to limit RPS.
     ## KiB exports
-    # WARNING: Resolution will have drastic perf implications
-    #  This directly affects how many times we call histogram.Observe.
-    #  If you have a ~128,000 byte size record and resolution is set to 0.001 we will call observe 128,000 times.
-    # this does mean we lose some resolution on how large the records are, because they'll be rounded down by 'n' bytes.
-    # value is in KiB, recommend starting at something like 0.334 so our resolution will be around 334 bytes and we will call observe 334x less.
-    # This also artificially deflates the number, so you will have to scale it up. If we are observing 334x less data, you will need to 334x the final value from the histograms - though they should be accurate as a distribution.
-    #  There is no good way around this.
-    kbyteHistogramResolution: 0.334 # maximum rez 0.001 (1 byte res) which seems to generate more than 30x more compute needs than 0.333
+    # Bucket counts represent total bytes per TTL bucket (O(1) per record).
     kbyteHistogramEnabled: true
     ## Bucket Size exports
     sizeHistogramEnabled: true
