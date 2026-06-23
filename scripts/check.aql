@@ -1,3 +1,12 @@
 SET OUTPUT JSON;
 SET RECORD_PRINT_METADATA TRUE;
-SELECT * FROM test.myset WHERE PK = 'canary1';
+SELECT * FROM test.myset WHERE PK = 'canary01';
+SELECT * FROM test.myset WHERE PK = 'canary02';
+SELECT * FROM test.myset WHERE PK = 'canary03';
+SELECT * FROM test.myset WHERE PK = 'canary04';
+SELECT * FROM test.myset WHERE PK = 'canary05';
+SELECT * FROM test.myset WHERE PK = 'canary06';
+SELECT * FROM test.myset WHERE PK = 'canary07';
+SELECT * FROM test.myset WHERE PK = 'canary08';
+SELECT * FROM test.myset WHERE PK = 'canary09';
+SELECT * FROM test.myset WHERE PK = 'canary10';

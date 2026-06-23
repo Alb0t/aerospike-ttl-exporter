@@ -1,6 +1,6 @@
 ---
 # Exporter config for the ephemeral docker Aerospike used by gen-stability-test.sh.
-# Single community-edition node, no auth, autoDiscover so the seeded `test`
+# Single enterprise-edition node, no auth, autoDiscover so the seeded `test`
 # namespace/set is found and scanned automatically.
 service:
   listenPort: :9634
@@ -23,6 +23,7 @@ service:
     policyTotalTimeout: 20m
     policySocketTimeout: 20m
     sizeHistogramEnabled: true
+    kbyteHistogramEnabled: true
     ttlBuckets:
       mode: auto
     sizeBuckets:

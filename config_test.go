@@ -41,7 +41,6 @@ monitor:
       start: 180d
       width: 10d
       count: 10
-    kbyteHistogramResolution: 0.334
     sizeHistogramEnabled: true
     sizeBuckets:
       mode: exponential

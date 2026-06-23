@@ -450,12 +450,8 @@ func observeRecordSize(rec *as.Result, element monconf, hs *histSet, expireTime 
 	if err != nil && err != as.ErrKeyNotFound { // key-not-found is debug-logged earlier and non-fatal.
 		logrus.Errorf("Failure fetching record size. Err: %v", err)
 	}
-	// KByteHistogramResolution is the loop step; a zero step would spin forever.
-	if element.KByteHistogramEnabled && hs.bytes != nil && element.KByteHistogramResolution > 0 {
-		bytesTTLSize := float64(recordsize) / 1024.0
-		for i := 0.0; i < bytesTTLSize; i += element.KByteHistogramResolution {
-			hs.bytes.WithLabelValues("recordsize").Observe(expireTime)
-		}
+	if element.KByteHistogramEnabled && hs.bytes != nil {
+		hs.bytes.addWeight(expireTime, recordsize)
 	}
 	if element.SizeHistogramEnabled && hs.sizes != nil && recordsize != 0 {
 		hs.sizes.WithLabelValues("recordsize").Observe(float64(recordsize))

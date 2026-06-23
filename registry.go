@@ -41,9 +41,9 @@ func nsSetKey(ns, set string) string {
 // Two effectiveSets with equal signatures produce identical collectors, so the
 // registry can skip unregister/re-register churn when the signature is unchanged.
 func (e effectiveSet) signature() string {
-	return fmt.Sprintf("exp=%t|unit=%s|buckets=%v|kb=%t|res=%g|size=%t|sb=%+v",
+	return fmt.Sprintf("exp=%t|unit=%s|buckets=%v|kb=%t|size=%t|sb=%+v",
 		e.expirable, e.ttlUnit, e.buckets,
-		e.cfg.KByteHistogramEnabled, e.cfg.KByteHistogramResolution,
+		e.cfg.KByteHistogramEnabled,
 		e.cfg.SizeHistogramEnabled, e.cfg.SizeBuckets)
 }
 
@@ -54,7 +54,7 @@ type histSet struct {
 	namespace string // retained so prune can delete this set's gauge series
 	set       string
 	counts    *prometheus.HistogramVec
-	bytes     *prometheus.HistogramVec
+	bytes     *kibCollector
 	sizes     *prometheus.HistogramVec
 	modifier  int
 	sig       string
@@ -156,18 +156,6 @@ func newCountsHist(namespace, set, ttlUnit string, buckets []float64) *prometheu
 	}, []string{})
 }
 
-// newBytesHist builds the kib_hist (bytes-per-ttl-bucket) collector. Single
-// shared definition, see newCountsHist.
-func newBytesHist(namespace, set, ttlUnit string, buckets []float64) *prometheus.HistogramVec {
-	return prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace:   "aerospike_ttl",
-		Name:        "kib_hist",
-		Help:        "Histogram of how many bytes fall into each ttl bucket. Memory will be the in-memory data size and does not include PI or SI.",
-		Buckets:     buckets,
-		ConstLabels: prometheus.Labels{"namespace": namespace, "set": set, "ttlUnit": ttlUnit},
-	}, []string{"storage_type"})
-}
-
 // newSizesHist builds the size_bytes_hist (record-size distribution) collector.
 // Single shared definition, see newCountsHist.
 func newSizesHist(namespace, set string, buckets []float64) *prometheus.HistogramVec {
@@ -192,7 +180,7 @@ func buildHistSet(reg prometheus.Registerer, e effectiveSet, sig string) *histSe
 		reg.MustRegister(hs.counts)
 
 		if e.cfg.KByteHistogramEnabled {
-			hs.bytes = newBytesHist(e.namespace, e.set, e.ttlUnit, e.buckets)
+			hs.bytes = newKibCollector(e.namespace, e.set, e.ttlUnit, e.buckets)
 			reg.MustRegister(hs.bytes)
 		}
 	}
