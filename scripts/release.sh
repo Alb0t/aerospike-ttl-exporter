@@ -34,7 +34,7 @@ unformatted="$(gofmt -l .)"; [[ -z "${unformatted}" ]] || { echo "gofmt needed: 
 go vet ./...
 go test ./...
 
-git rev-parse "${vers}" >/dev/null 2>&1 && { echo "tag ${vers} already exists — bump the version"; exit 1; }
+git rev-parse "refs/tags/${vers}" >/dev/null 2>&1 && { echo "tag ${vers} already exists — bump the version"; exit 1; }
 
 read -rp "release ${vers} from $(git rev-parse --short HEAD)? [y/N] " ans
 [[ "${ans}" == "y" || "${ans}" == "Y" ]] || { echo "aborted"; exit 1; }
