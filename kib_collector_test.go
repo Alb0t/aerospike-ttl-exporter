@@ -27,7 +27,7 @@ func TestKibCollectorSingleRecord(t *testing.T) {
 	c.addWeight(15.0, 2048) // 2 KiB, TTL=15 days -> bucket le=20
 
 	expected := `
-# HELP aerospike_ttl_kib_hist Size-weighted TTL histogram: bucket counts represent total KiB of records in each TTL bucket.
+# HELP aerospike_ttl_kib_hist Size-weighted TTL histogram: bucket counts represent total KiB of records in each TTL bucket. Counter — rate()/increase() over a window to read the per-window TTL-size distribution, not the raw value.
 # TYPE aerospike_ttl_kib_hist histogram
 aerospike_ttl_kib_hist_bucket{namespace="ns1",set="foo",storage_type="recordsize",ttlUnit="days",le="10"} 0
 aerospike_ttl_kib_hist_bucket{namespace="ns1",set="foo",storage_type="recordsize",ttlUnit="days",le="20"} 2
@@ -49,7 +49,7 @@ func TestKibCollectorMultipleRecordsDifferentBuckets(t *testing.T) {
 	c.addWeight(250.0, 3072) // 3 KiB -> bucket le=300
 
 	expected := `
-# HELP aerospike_ttl_kib_hist Size-weighted TTL histogram: bucket counts represent total KiB of records in each TTL bucket.
+# HELP aerospike_ttl_kib_hist Size-weighted TTL histogram: bucket counts represent total KiB of records in each TTL bucket. Counter — rate()/increase() over a window to read the per-window TTL-size distribution, not the raw value.
 # TYPE aerospike_ttl_kib_hist histogram
 aerospike_ttl_kib_hist_bucket{namespace="ns1",set="bar",storage_type="recordsize",ttlUnit="seconds",le="100"} 1
 aerospike_ttl_kib_hist_bucket{namespace="ns1",set="bar",storage_type="recordsize",ttlUnit="seconds",le="200"} 3
@@ -69,7 +69,7 @@ func TestKibCollectorOverflowToInf(t *testing.T) {
 	c.addWeight(25.0, 1024) // 1 KiB, TTL=25 > all bounds -> only in +Inf and count
 
 	expected := `
-# HELP aerospike_ttl_kib_hist Size-weighted TTL histogram: bucket counts represent total KiB of records in each TTL bucket.
+# HELP aerospike_ttl_kib_hist Size-weighted TTL histogram: bucket counts represent total KiB of records in each TTL bucket. Counter — rate()/increase() over a window to read the per-window TTL-size distribution, not the raw value.
 # TYPE aerospike_ttl_kib_hist histogram
 aerospike_ttl_kib_hist_bucket{namespace="ns1",set="baz",storage_type="recordsize",ttlUnit="days",le="10"} 0
 aerospike_ttl_kib_hist_bucket{namespace="ns1",set="baz",storage_type="recordsize",ttlUnit="days",le="20"} 0
@@ -88,7 +88,7 @@ func TestKibCollectorZeroSizeSkipped(t *testing.T) {
 	c.addWeight(5.0, -1)
 
 	expected := `
-# HELP aerospike_ttl_kib_hist Size-weighted TTL histogram: bucket counts represent total KiB of records in each TTL bucket.
+# HELP aerospike_ttl_kib_hist Size-weighted TTL histogram: bucket counts represent total KiB of records in each TTL bucket. Counter — rate()/increase() over a window to read the per-window TTL-size distribution, not the raw value.
 # TYPE aerospike_ttl_kib_hist histogram
 aerospike_ttl_kib_hist_bucket{namespace="ns1",set="z",storage_type="recordsize",ttlUnit="days",le="10"} 0
 aerospike_ttl_kib_hist_bucket{namespace="ns1",set="z",storage_type="recordsize",ttlUnit="days",le="+Inf"} 0
@@ -106,7 +106,7 @@ func TestKibCollectorBoundaryValue(t *testing.T) {
 	c.addWeight(10.0, 1024) // 1 KiB, exactly on boundary le=10 -> goes in that bucket
 
 	expected := `
-# HELP aerospike_ttl_kib_hist Size-weighted TTL histogram: bucket counts represent total KiB of records in each TTL bucket.
+# HELP aerospike_ttl_kib_hist Size-weighted TTL histogram: bucket counts represent total KiB of records in each TTL bucket. Counter — rate()/increase() over a window to read the per-window TTL-size distribution, not the raw value.
 # TYPE aerospike_ttl_kib_hist histogram
 aerospike_ttl_kib_hist_bucket{namespace="ns1",set="edge",storage_type="recordsize",ttlUnit="days",le="10"} 1
 aerospike_ttl_kib_hist_bucket{namespace="ns1",set="edge",storage_type="recordsize",ttlUnit="days",le="20"} 1

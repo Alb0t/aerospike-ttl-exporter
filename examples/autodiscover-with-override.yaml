@@ -1,0 +1,59 @@
+---
+# Auto-discovery with per-set overrides (autoDiscover: true + monitor entries).
+#
+# Discovery handles every set automatically. Each monitor entry below matches a
+# discovered set by namespace+set and overrides ONLY the fields it sets
+# (field-by-field). Bucket blocks (ttlBuckets/sizeBuckets) replace wholesale —
+# a present block entirely supplants the discovered/default one.
+service:
+  listenPort: :9634
+  aerospikeAddr: 127.0.0.1
+  aerospikePort: 3000
+  skipNodeCheck: false
+  frequencySecs: 60
+  verbose: false
+
+  autoDiscover: true
+  discoveryIntervalSecs: 300
+  discoveryBucketCount: 10
+  discoveryRangePaddingPct: 25
+
+  discoveryDefaults:
+    recordCount: -1
+    scanPercent: 1.0
+    reportCount: 300000
+    scanTotalTimeout: 20m
+    scanSocketTimeout: 20m
+    policyTotalTimeout: 20m
+    policySocketTimeout: 20m
+    recordsPerSecond: 100
+    kbyteHistogramEnabled: true
+    sizeHistogramEnabled: true
+    ttlBuckets:
+      mode: auto
+      scale: linear
+    sizeBuckets:
+      mode: exponential
+      min: 1
+      max: 8389000
+      count: 10
+
+monitor:
+  # metrics:timeseries is heavily skewed — most records expire soon with a long
+  # tail. Keep auto-fitting the range, but switch to exponential spacing for
+  # sharper low-TTL resolution, and sample this set harder than the default.
+  - namespace: metrics
+    set: timeseries
+    scanPercent: 5.0
+    ttlBuckets:
+      mode: auto
+      scale: exponential
+
+  # audit:log has a fixed contractual retention — pin explicit static buckets
+  # instead of auto-fitting, and skip the size histogram for this set.
+  - namespace: audit
+    set: log
+    sizeHistogramEnabled: false
+    ttlBuckets:
+      mode: static
+      static: [30d, 90d, 180d, 270d, 365d]

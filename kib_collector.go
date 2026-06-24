@@ -33,7 +33,7 @@ func newKibCollector(namespace, set, ttlUnit string, buckets []float64) *kibColl
 
 	desc := prometheus.NewDesc(
 		"aerospike_ttl_kib_hist",
-		"Size-weighted TTL histogram: bucket counts represent total KiB of records in each TTL bucket.",
+		"Size-weighted TTL histogram: bucket counts represent total KiB of records in each TTL bucket. Counter — rate()/increase() over a window to read the per-window TTL-size distribution, not the raw value.",
 		[]string{"storage_type"},
 		prometheus.Labels{"namespace": namespace, "set": set, "ttlUnit": ttlUnit},
 	)

@@ -3,6 +3,8 @@ package main
 import (
 	"reflect"
 	"testing"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestPickUnit(t *testing.T) {
@@ -121,7 +123,7 @@ func TestFitBuckets(t *testing.T) {
 		// n=4 bins must SPAN [20,60] inclusive: top edge == maxSec, else the
 		// (maxSec-width, maxSec] slice overflows into +Inf. -> N+1 edges.
 		hist := []int64{0, 0, 3, 5, 0, 2, 0}
-		got, unit, mod, expirable := fitBuckets(10, hist, 999, 4, 0)
+		got, unit, mod, expirable := fitBuckets(10, hist, 999, 4, 0, "")
 		if !expirable {
 			t.Fatal("expected expirable=true")
 		}
@@ -139,7 +141,7 @@ func TestFitBuckets(t *testing.T) {
 		// the top edge to 90 so a TTL that drifts up to 90s still lands in a real
 		// bin instead of +Inf. Bins still start at the observed min (20).
 		hist := []int64{0, 0, 3, 5, 0, 2, 0}
-		got, _, _, expirable := fitBuckets(10, hist, 999, 4, 50)
+		got, _, _, expirable := fitBuckets(10, hist, 999, 4, 50, "")
 		if !expirable {
 			t.Fatal("expected expirable=true")
 		}
@@ -153,7 +155,7 @@ func TestFitBuckets(t *testing.T) {
 
 	t.Run("falls back to 0..default-ttl when histogram empty", func(t *testing.T) {
 		hist := []int64{0, 0, 0}
-		got, unit, mod, expirable := fitBuckets(10, hist, 3*86400, 3, 0)
+		got, unit, mod, expirable := fitBuckets(10, hist, 3*86400, 3, 0, "")
 		if !expirable {
 			t.Fatal("expected expirable=true via default-ttl fallback")
 		}
@@ -173,12 +175,58 @@ func TestFitBuckets(t *testing.T) {
 	})
 
 	t.Run("non-expirable when histogram empty and default-ttl zero", func(t *testing.T) {
-		got, _, _, expirable := fitBuckets(10, []int64{0, 0, 0}, 0, 4, 0)
+		got, _, _, expirable := fitBuckets(10, []int64{0, 0, 0}, 0, 4, 0, "")
 		if expirable {
 			t.Fatal("expected expirable=false")
 		}
 		if got != nil {
 			t.Errorf("expected nil buckets, got %v", got)
+		}
+	})
+
+	t.Run("exponential scale uses geometric spacing over the fitted range", func(t *testing.T) {
+		// width 1d, populated indices 1..10 -> minSec=1d, maxSec=(10+1)*1d=11d
+		// (day-aligned, no padding). exponential edges span [1,11] days, n+1=4 edges.
+		hist := make([]int64, 11)
+		for i := 1; i <= 10; i++ {
+			hist[i] = 1
+		}
+		got, unit, mod, expirable := fitBuckets(86400, hist, 0, 3, 0, "exponential")
+		if !expirable || unit != "days" || mod != 86400 {
+			t.Fatalf("expirable/unit/mod = %v/%q/%d, want true/days/86400", expirable, unit, mod)
+		}
+		want := prometheus.ExponentialBucketsRange(1, 11, 4)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("buckets = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("exponential floors a zero start to one bucket width", func(t *testing.T) {
+		// populated from index 0 -> minSec=0; exponential needs lo>0, so it floors
+		// to one bucketWidth (1d) instead of producing an invalid 0 low edge.
+		hist := []int64{1, 1, 1, 1}
+		got, _, _, _ := fitBuckets(86400, hist, 0, 3, 0, "exponential")
+		if got[0] != 1 {
+			t.Errorf("first edge = %v, want 1 (one bucketWidth floor)", got[0])
+		}
+	})
+
+	t.Run("quantize snaps sub-unit drift to identical edges across passes", func(t *testing.T) {
+		// Two passes whose raw day-scale max differs by less than a whole day must
+		// produce byte-identical edges, so the collector signature is unchanged and
+		// no counter-resetting rebuild happens. width 8640s = 0.1d.
+		passA := make([]int64, 31) // populated 0..30 -> maxSec 3.1d, snaps up to 4d
+		passB := make([]int64, 32) // populated 0..31 -> maxSec 3.2d (sub-day drift), also 4d
+		for i := range passA {
+			passA[i] = 1
+		}
+		for i := range passB {
+			passB[i] = 1
+		}
+		a, _, _, _ := fitBuckets(8640, passA, 0, 4, 0, "")
+		b, _, _, _ := fitBuckets(8640, passB, 0, 4, 0, "")
+		if !reflect.DeepEqual(a, b) {
+			t.Errorf("sub-unit drift changed edges: %v vs %v (would churn collector)", a, b)
 		}
 	})
 }
