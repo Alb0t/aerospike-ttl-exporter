@@ -21,6 +21,20 @@ aerospike_ttl_default_ttl_seconds{namespace="ns1"} 432000
 	}
 }
 
+func TestBuildInfoExposesVersionAndCommit(t *testing.T) {
+	buildInfo.Reset()
+	buildInfo.WithLabelValues("v5.1.1", "abc1234").Set(1)
+
+	expected := `
+# HELP aerospike_ttl_build_info Build info
+# TYPE aerospike_ttl_build_info gauge
+aerospike_ttl_build_info{commit="abc1234",version="v5.1.1"} 1
+`
+	if err := testutil.CollectAndCompare(buildInfo, strings.NewReader(expected)); err != nil {
+		t.Error(err)
+	}
+}
+
 func TestTTLRangePublishesMinMax(t *testing.T) {
 	minTTLGauge.Reset()
 	maxTTLGauge.Reset()
