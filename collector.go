@@ -13,9 +13,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// buildVersion is injected at release time by goreleaser
-// (ldflags -X main.buildVersion={{.Version}}). "dev" for local/non-release builds.
+// buildVersion and buildCommit are injected at release time by goreleaser
+// (ldflags -X main.buildVersion={{.Version}} -X main.buildCommit={{.ShortCommit}}).
+// "dev"/"unknown" for local/non-release builds. buildCommit disambiguates two
+// builds that share a tag (e.g. a re-cut release): the version label alone can't.
 var buildVersion = "dev"
+var buildCommit = "unknown"
 var configFile = flag.String("configFile", "/etc/ttl-aerospike-exporter.yaml", "The yaml config file for the exporter")
 
 // ns_set_to_histSet maps "ns:set" to the collectors built at startup for the
@@ -28,7 +31,7 @@ var buildInfo = prometheus.NewGaugeVec(
 		Name:      "build_info",
 		Help:      "Build info",
 	},
-	[]string{"version"},
+	[]string{"version", "commit"},
 )
 
 var scanTimes = prometheus.NewGaugeVec(
@@ -452,7 +455,7 @@ func registerCoreMetrics() {
 	prometheus.MustRegister(minTTLGauge)
 	prometheus.MustRegister(maxTTLGauge)
 	prometheus.MustRegister(buildInfo)
-	buildInfo.WithLabelValues(buildVersion).Set(1)
+	buildInfo.WithLabelValues(buildVersion, buildCommit).Set(1)
 }
 
 // startSchedulers starts the discovery (if enabled) and scan scheduler jobs and
