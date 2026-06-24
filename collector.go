@@ -91,15 +91,14 @@ type conf struct {
 }
 
 type serviceConf struct {
-	ListenPort          string `yaml:"listenPort"`
-	SkipNodeCheck       bool   `yaml:"skipNodeCheck"`
-	FailOnClusterChange bool   `yaml:"FailOnClusterChange"`
-	FrequencySecs       int    `yaml:"frequencySecs"`
-	Verbose             bool   `yaml:"verbose"`
-	Username            string `yaml:"username"`
-	Password            string `yaml:"password"`
-	AerospikeAddr       string `yaml:"aerospikeAddr"`
-	AerospikePort       int    `yaml:"aerospikePort"`
+	ListenPort    string `yaml:"listenPort"`
+	SkipNodeCheck bool   `yaml:"skipNodeCheck"`
+	FrequencySecs int    `yaml:"frequencySecs"`
+	Verbose       bool   `yaml:"verbose"`
+	Username      string `yaml:"username"`
+	Password      string `yaml:"password"`
+	AerospikeAddr string `yaml:"aerospikeAddr"`
+	AerospikePort int    `yaml:"aerospikePort"`
 	// Auto-discovery mode: enumerate namespaces/sets from Aerospike and build
 	// TTL histogram config automatically. When false, behavior is unchanged and
 	// only the explicit `monitor:` entries are scanned.
@@ -128,6 +127,11 @@ type bucketConfig struct {
 	Min    string   `yaml:"min,omitempty"`
 	Max    string   `yaml:"max,omitempty"`
 	Count  int      `yaml:"count,omitempty"`
+	// Scale applies only to mode=auto (TTL discovery): "exponential" gives the
+	// fitted range geometric spacing (better resolution for skewed TTLs); empty
+	// or "linear" keeps evenly-spaced bins. Ignored by static/linear/exponential
+	// modes, which spell their spacing out directly.
+	Scale string `yaml:"scale,omitempty"`
 }
 
 type monconf struct {
@@ -267,6 +271,7 @@ func (c *conf) validateLegacyTTLModes() {
 // An empty Mode is allowed (means "not configured"): TTL falls back to auto-fit
 // and size histograms are gated by sizeHistogramEnabled instead.
 func (b bucketConfig) validate(kind string) {
+	b.validateScale(kind)
 	switch b.Mode {
 	case "":
 		return
@@ -286,6 +291,20 @@ func (b bucketConfig) validate(kind string) {
 		b.validateExponential(kind)
 	default:
 		log.Fatalf("%sBuckets unknown mode %q (want static|linear|exponential|auto)", kind, b.Mode)
+	}
+}
+
+// validateScale rejects an unknown scale value and an exponential scale on
+// anything but mode=auto (only the auto-fit path consults scale; spelling it
+// out elsewhere would silently do nothing).
+func (b bucketConfig) validateScale(kind string) {
+	switch b.Scale {
+	case "", "linear", "exponential":
+	default:
+		log.Fatalf("%sBuckets unknown scale %q (want linear|exponential)", kind, b.Scale)
+	}
+	if b.Scale != "" && b.Mode != "" && b.Mode != "auto" {
+		log.Fatalf("%sBuckets scale=%q only applies to mode=auto, not mode=%q", kind, b.Scale, b.Mode)
 	}
 }
 

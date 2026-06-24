@@ -139,7 +139,12 @@ Usage of ./aerospike-ttl-exporter:
 ```
 
 1. Grab a release from https://github.com/Alb0t/aerospike-ttl-exporter/releases
-2. Create a config file (see `conf.yaml`)
+2. Create a config file. Start from a ready-to-edit example:
+   - [`examples/manual.yaml`](examples/manual.yaml) — `autoDiscover: false`; you list sets and bucket boundaries explicitly.
+   - [`examples/autodiscover.yaml`](examples/autodiscover.yaml) — `autoDiscover: true`; buckets fit automatically, no `monitor:` entries.
+   - [`examples/autodiscover-with-override.yaml`](examples/autodiscover-with-override.yaml) — auto-discovery plus per-set `monitor:` overrides (exponential scale on one set, pinned static buckets on another).
+
+   `conf.yaml` is the fully-commented reference for every field.
 3. Run the binary: `./aerospike-ttl-exporter -configFile /path/to/conf.yaml`
 
 The config file is YAML. There are **no default values** — any omitted or misspelled key gets Go's zero value for that type (e.g. `0` for `int`, `""` for `string`). Don't omit fields or misspell them.
@@ -159,9 +164,9 @@ The exporter asks Aerospike which namespaces and sets exist, reads each set's TT
 1. Enumerates namespaces (`namespaces` info command) and the sets in each (`sets/<ns>`).
 2. For each namespace, checks for set-less records (the "null set") by comparing namespace total objects to the sum of per-set objects. If set-less records exist, a synthetic null-set entry is added (scanned with a server-side filter to count only set-less records).
 3. Reads each namespace's `default-ttl` and each set's TTL histogram (`histogram:namespace=<ns>;set=<set>;type=ttl`).
-4. Fits **linear** histogram buckets to the observed min/max populated TTL. `discoveryBucketCount` sets the number of bins; `n+1` edges span `[minTTL, maxTTL]` inclusive so the densest top TTLs land in a real bucket, not `+Inf`.
+4. Fits histogram buckets to the observed min/max populated TTL. `discoveryBucketCount` sets the number of bins; `n+1` edges span `[minTTL, maxTTL]` inclusive so the densest top TTLs land in a real bucket, not `+Inf`. Spacing is **linear** by default; set `ttlBuckets.scale: exponential` (auto mode only) for geometric spacing when TTLs are heavily skewed.
 5. `discoveryRangePaddingPct` extends each fitted top edge by that percentage. Aerospike's TTL histogram rescales dynamically, so between discovery passes the live max TTL can drift above the observed max and spill into `+Inf`; padding leaves headroom. Pair with a short `discoveryIntervalSecs` to re-fit before drift grows large.
-6. Picks the display unit from the magnitude of the observed max TTL: `>2d → days`, `>2h → hours`, else `seconds`.
+6. Picks the display unit from the magnitude of the observed max TTL: `>2d → days`, `>2h → hours`, else `seconds`, then **quantizes** the fitted range to whole display units. Sub-unit drift between passes leaves the edges byte-identical, so the collector signature is unchanged and no resetting rebuild happens.
 
 **Scheduling:** Discovery runs on its own interval (`discoveryIntervalSecs`, defaults to `frequencySecs`) independent of the scan cadence. It runs once synchronously at startup so metrics are populated before the first scan, then periodically. Only unregisters/re-registers collectors when the computed bucket signature actually changes — no churn when the distribution is stable.
 
@@ -189,7 +194,7 @@ Both use the same `mode`-driven shape:
 | `static` | `static: [...]` | Explicit list of bucket boundaries. |
 | `linear` | `start`, `width`, `count` | `prometheus.LinearBuckets(start, width, count)` |
 | `exponential` | `min`, `max`, `count` | `prometheus.ExponentialBucketsRange(min, max, count)` |
-| `auto` | — | **ttlBuckets only.** Discovery fits linear buckets to the live TTL histogram. Fatal if used on `sizeBuckets`. |
+| `auto` | `scale` (opt) | **ttlBuckets only.** Discovery fits buckets to the live TTL histogram (range quantized to whole display units for cross-pass stability). `scale: linear` (default) or `exponential`. Fatal if used on `sizeBuckets`. |
 
 ### Examples
 
@@ -225,7 +230,7 @@ Config is validated on load. Fatal startup errors for:
 
 ## Configuration reference
 
-See `conf.yaml` for a fully commented example.
+See `conf.yaml` for a fully commented example, or the ready-to-edit configs in [`examples/`](examples/).
 
 ### `service:` block
 

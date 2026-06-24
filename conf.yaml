@@ -45,10 +45,16 @@ service:
     policySocketTimeout: 20m
     recordsPerSecond: 100
     sizeHistogramEnabled: true
-    # ttlBuckets.mode: auto -> discovery fits linear TTL buckets to each set's
-    # live ttl histogram (the discovery default; only valid for ttlBuckets).
+    # ttlBuckets.mode: auto -> discovery fits TTL buckets to each set's live ttl
+    # histogram (the discovery default; only valid for ttlBuckets). The fitted
+    # range is snapped to whole display units so sub-unit drift between passes
+    # doesn't churn (rebuild/reset) the collector.
     ttlBuckets:
       mode: auto
+      # scale: linear (default) | exponential. exponential gives the fitted range
+      # geometric spacing — better resolution when TTLs are heavily skewed. Only
+      # consulted for mode: auto; override per set in a monitor entry to experiment.
+      scale: linear
     # sizeBuckets: record-size histogram boundaries (raw bytes).
     sizeBuckets:
       mode: exponential

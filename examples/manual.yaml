@@ -1,0 +1,55 @@
+---
+# Manual mode (autoDiscover: false).
+#
+# You list exactly which namespaces/sets to scan and specify the TTL bucket
+# boundaries yourself. Because there is no discovery pass to fit against, every
+# monitor entry MUST set an explicit ttlBuckets mode (static|linear|exponential);
+# mode: auto or an empty mode is rejected at startup.
+service:
+  listenPort: :9634
+  aerospikeAddr: 127.0.0.1
+  aerospikePort: 3000
+  skipNodeCheck: false
+  frequencySecs: 60
+  verbose: false
+  autoDiscover: false
+
+monitor:
+  # A set with a known, fixed TTL band — static boundaries say exactly where.
+  - namespace: users
+    set: sessions
+    recordCount: -1 # -1 = no cap; rely on scanPercent
+    scanPercent: 1.0 # sample ~1% of records
+    reportCount: 300000
+    scanTotalTimeout: 20m
+    scanSocketTimeout: 20m
+    policyTotalTimeout: 20m
+    policySocketTimeout: 20m
+    recordsPerSecond: 100
+    kbyteHistogramEnabled: true
+    sizeHistogramEnabled: true
+    ttlBuckets:
+      mode: static
+      static: [1d, 3d, 7d, 14d, 30d]
+    sizeBuckets:
+      mode: exponential
+      min: 1
+      max: 8389000 # 8 MiB — max aerospike record size (7.0+)
+      count: 10
+
+  # A whole namespace (set: null) with evenly-spaced linear TTL buckets.
+  - namespace: events
+    set: null # null = scan the entire namespace (all sets + set-less records)
+    recordCount: -1
+    scanPercent: 0.5
+    reportCount: 300000
+    scanTotalTimeout: 20m
+    scanSocketTimeout: 20m
+    policyTotalTimeout: 20m
+    policySocketTimeout: 20m
+    recordsPerSecond: 100
+    ttlBuckets:
+      mode: linear
+      start: 0d
+      width: 5d
+      count: 12 # buckets span 0..60d

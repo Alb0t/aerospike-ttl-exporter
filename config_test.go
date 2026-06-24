@@ -3,11 +3,44 @@ package main
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
+
+// TestExampleConfigsValid decodes and validates every examples/*.yaml so a
+// malformed or drifted example fails CI instead of a user's startup. validate()
+// log.Fatals on bad config (os.Exit), so it runs in a subprocess per file; a
+// non-zero exit means that example is broken.
+func TestExampleConfigsValid(t *testing.T) {
+	files, err := filepath.Glob("examples/*.yaml")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no example configs found (glob err=%v)", err)
+	}
+	if os.Getenv("GO_TEST_SUBPROCESS") == "1" {
+		var c conf
+		raw, rerr := os.ReadFile(os.Getenv("EXAMPLE_FILE"))
+		if rerr != nil {
+			os.Exit(1)
+		}
+		if yaml.Unmarshal(raw, &c) != nil {
+			os.Exit(1)
+		}
+		c.validate() // fatals (os.Exit) on invalid config
+		return
+	}
+	for _, f := range files {
+		t.Run(f, func(t *testing.T) {
+			cmd := exec.Command(os.Args[0], "-test.run=^TestExampleConfigsValid$")
+			cmd.Env = append(os.Environ(), "GO_TEST_SUBPROCESS=1", "EXAMPLE_FILE="+f)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Errorf("%s failed validation:\n%s", f, out)
+			}
+		})
+	}
+}
 
 func TestConfigDecodeStaticMonitor(t *testing.T) {
 	// A non-discovery config: explicit monitor entries using the unified
@@ -191,6 +224,45 @@ func TestValidateFatalsSizeHistEnabledWithoutMode(t *testing.T) {
 		t.Fatal("expected fatal exit when sizeHistogramEnabled=true with no sizeBuckets mode")
 	}
 	if !strings.Contains(out, "sizeHistogramEnabled requires sizeBuckets") {
+		t.Errorf("unexpected fatal message: %s", out)
+	}
+}
+
+func TestValidateFatalsUnknownTTLScale(t *testing.T) {
+	if os.Getenv("GO_TEST_SUBPROCESS") == "1" {
+		var c conf
+		c.Service.AutoDiscover = true
+		c.Service.DiscoveryBucketCount = 10
+		c.Service.DiscoveryDefaults.TTLBuckets = bucketConfig{Mode: "auto", Scale: "bogus"}
+		c.validate()
+		return
+	}
+	out, failed := runSubprocessTest(t, "TestValidateFatalsUnknownTTLScale")
+	if !failed {
+		t.Fatal("expected fatal exit on unknown ttlBuckets scale")
+	}
+	if !strings.Contains(out, "unknown scale") {
+		t.Errorf("unexpected fatal message: %s", out)
+	}
+}
+
+func TestValidateFatalsScaleOnNonAutoMode(t *testing.T) {
+	if os.Getenv("GO_TEST_SUBPROCESS") == "1" {
+		var c conf
+		c.Service.AutoDiscover = true
+		c.Service.DiscoveryBucketCount = 10
+		// scale only applies to mode=auto; pairing it with linear is a config error.
+		c.Service.DiscoveryDefaults.TTLBuckets = bucketConfig{
+			Mode: "linear", Start: "1d", Width: "1d", Count: 3, Scale: "exponential",
+		}
+		c.validate()
+		return
+	}
+	out, failed := runSubprocessTest(t, "TestValidateFatalsScaleOnNonAutoMode")
+	if !failed {
+		t.Fatal("expected fatal exit when scale set on a non-auto mode")
+	}
+	if !strings.Contains(out, "only applies to mode=auto") {
 		t.Errorf("unexpected fatal message: %s", out)
 	}
 }
