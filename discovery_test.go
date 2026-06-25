@@ -123,7 +123,7 @@ func TestFitBuckets(t *testing.T) {
 		// n=4 bins must SPAN [20,60] inclusive: top edge == maxSec, else the
 		// (maxSec-width, maxSec] slice overflows into +Inf. -> N+1 edges.
 		hist := []int64{0, 0, 3, 5, 0, 2, 0}
-		got, unit, mod, expirable := fitBuckets(10, hist, 999, 4, 0, "")
+		got, unit, mod, expirable := fitBuckets(10, hist, 999, 4, 0, "", 0)
 		if !expirable {
 			t.Fatal("expected expirable=true")
 		}
@@ -141,7 +141,7 @@ func TestFitBuckets(t *testing.T) {
 		// the top edge to 90 so a TTL that drifts up to 90s still lands in a real
 		// bin instead of +Inf. Bins still start at the observed min (20).
 		hist := []int64{0, 0, 3, 5, 0, 2, 0}
-		got, _, _, expirable := fitBuckets(10, hist, 999, 4, 50, "")
+		got, _, _, expirable := fitBuckets(10, hist, 999, 4, 50, "", 0)
 		if !expirable {
 			t.Fatal("expected expirable=true")
 		}
@@ -155,7 +155,7 @@ func TestFitBuckets(t *testing.T) {
 
 	t.Run("falls back to 0..default-ttl when histogram empty", func(t *testing.T) {
 		hist := []int64{0, 0, 0}
-		got, unit, mod, expirable := fitBuckets(10, hist, 3*86400, 3, 0, "")
+		got, unit, mod, expirable := fitBuckets(10, hist, 3*86400, 3, 0, "", 0)
 		if !expirable {
 			t.Fatal("expected expirable=true via default-ttl fallback")
 		}
@@ -175,7 +175,7 @@ func TestFitBuckets(t *testing.T) {
 	})
 
 	t.Run("non-expirable when histogram empty and default-ttl zero", func(t *testing.T) {
-		got, _, _, expirable := fitBuckets(10, []int64{0, 0, 0}, 0, 4, 0, "")
+		got, _, _, expirable := fitBuckets(10, []int64{0, 0, 0}, 0, 4, 0, "", 0)
 		if expirable {
 			t.Fatal("expected expirable=false")
 		}
@@ -191,7 +191,7 @@ func TestFitBuckets(t *testing.T) {
 		for i := 1; i <= 10; i++ {
 			hist[i] = 1
 		}
-		got, unit, mod, expirable := fitBuckets(86400, hist, 0, 3, 0, "exponential")
+		got, unit, mod, expirable := fitBuckets(86400, hist, 0, 3, 0, "exponential", 0)
 		if !expirable || unit != "days" || mod != 86400 {
 			t.Fatalf("expirable/unit/mod = %v/%q/%d, want true/days/86400", expirable, unit, mod)
 		}
@@ -205,7 +205,7 @@ func TestFitBuckets(t *testing.T) {
 		// populated from index 0 -> minSec=0; exponential needs lo>0, so it floors
 		// to one bucketWidth (1d) instead of producing an invalid 0 low edge.
 		hist := []int64{1, 1, 1, 1}
-		got, _, _, _ := fitBuckets(86400, hist, 0, 3, 0, "exponential")
+		got, _, _, _ := fitBuckets(86400, hist, 0, 3, 0, "exponential", 0)
 		if got[0] != 1 {
 			t.Errorf("first edge = %v, want 1 (one bucketWidth floor)", got[0])
 		}
@@ -223,10 +223,46 @@ func TestFitBuckets(t *testing.T) {
 		for i := range passB {
 			passB[i] = 1
 		}
-		a, _, _, _ := fitBuckets(8640, passA, 0, 4, 0, "")
-		b, _, _, _ := fitBuckets(8640, passB, 0, 4, 0, "")
+		a, _, _, _ := fitBuckets(8640, passA, 0, 4, 0, "", 0)
+		b, _, _, _ := fitBuckets(8640, passB, 0, 4, 0, "", 0)
 		if !reflect.DeepEqual(a, b) {
 			t.Errorf("sub-unit drift changed edges: %v vs %v (would churn collector)", a, b)
+		}
+	})
+
+	t.Run("outlier threshold trims sparse tail buckets", func(t *testing.T) {
+		// 10s bucket width. Bulk records in indices 20..25 (200-260s), one
+		// outlier record at index 1 (10-20s). Without threshold the range
+		// spans 10..260s; with 1% threshold the single outlier (1/1001 =
+		// 0.1%) is excluded and range tightens to 200..260s.
+		hist := make([]int64, 30)
+		hist[1] = 1
+		for i := 20; i <= 25; i++ {
+			hist[i] = 200
+		}
+		// No threshold: range starts at index 1.
+		gotWide, _, _, _ := fitBuckets(10, hist, 0, 4, 0, "", 0)
+		if gotWide[0] != 10 {
+			t.Errorf("no-threshold first edge = %v, want 10", gotWide[0])
+		}
+		// 1% threshold: outlier (1 record of 1001 total = 0.1%) excluded.
+		gotTight, _, _, _ := fitBuckets(10, hist, 0, 4, 0, "", 1)
+		if gotTight[0] != 200 {
+			t.Errorf("1%%-threshold first edge = %v, want 200 (outlier trimmed)", gotTight[0])
+		}
+	})
+
+	t.Run("outlier threshold falls back to default-ttl when all buckets below threshold", func(t *testing.T) {
+		// Every bucket holds exactly 1 record. With a high-enough threshold,
+		// all are below it, so populatedRangeSec returns ok=false and
+		// fitBuckets falls back to default-ttl.
+		hist := []int64{1, 1, 1}
+		got, _, _, expirable := fitBuckets(10, hist, 300, 3, 0, "", 50)
+		if !expirable {
+			t.Fatal("expected expirable=true via default-ttl fallback")
+		}
+		if got[0] != 0 {
+			t.Errorf("first edge = %v, want 0 (default-ttl fallback)", got[0])
 		}
 	})
 }
@@ -252,7 +288,7 @@ func TestBuildEffectiveSet(t *testing.T) {
 
 	t.Run("expirable: fits buckets, applies defaults", func(t *testing.T) {
 		// width 10s, populated 2..5 -> 20..60s -> seconds unit
-		es := buildEffectiveSet("ns1", "foo", 10, []int64{0, 0, 3, 5, 0, 2}, 999, defaults, nil, 4, 0)
+		es := buildEffectiveSet("ns1", "foo", 10, []int64{0, 0, 3, 5, 0, 2}, 999, defaults, nil, 4, 0, 0)
 		if es.key() != "ns1:foo" {
 			t.Errorf("key = %q", es.key())
 		}
@@ -271,7 +307,7 @@ func TestBuildEffectiveSet(t *testing.T) {
 	})
 
 	t.Run("non-expirable: empty hist + zero default-ttl", func(t *testing.T) {
-		es := buildEffectiveSet("ns1", "bar", 10, []int64{0, 0, 0}, 0, defaults, nil, 4, 0)
+		es := buildEffectiveSet("ns1", "bar", 10, []int64{0, 0, 0}, 0, defaults, nil, 4, 0, 0)
 		if es.expirable {
 			t.Fatal("want non-expirable")
 		}
@@ -286,7 +322,7 @@ func TestBuildEffectiveSet(t *testing.T) {
 	t.Run("override wins field-by-field", func(t *testing.T) {
 		sp := 50.0
 		ovr := &monconfOverride{Namespace: "ns1", Set: "foo", ScanPercent: &sp}
-		es := buildEffectiveSet("ns1", "foo", 10, []int64{0, 1}, 999, defaults, ovr, 4, 0)
+		es := buildEffectiveSet("ns1", "foo", 10, []int64{0, 1}, 999, defaults, ovr, 4, 0, 0)
 		if es.cfg.ScanPercent != 50 {
 			t.Errorf("ScanPercent = %v, want 50 (override)", es.cfg.ScanPercent)
 		}
@@ -299,7 +335,7 @@ func TestBuildEffectiveSet(t *testing.T) {
 func TestTTLBucketsFrom(t *testing.T) {
 	t.Run("static parses suffixed values", func(t *testing.T) {
 		b := bucketConfig{Mode: "static", Static: []string{"1d", "3d", "7d"}}
-		got, unit, mod, exp := ttlBucketsFrom(b, 0, nil, 0, 0, 0)
+		got, unit, mod, exp := ttlBucketsFrom(b, 0, nil, 0, 0, 0, 0)
 		if !exp || unit != "days" || mod != 86400 {
 			t.Fatalf("got exp=%v unit=%q mod=%d", exp, unit, mod)
 		}
@@ -310,7 +346,7 @@ func TestTTLBucketsFrom(t *testing.T) {
 
 	t.Run("linear builds start/width/count", func(t *testing.T) {
 		b := bucketConfig{Mode: "linear", Start: "10s", Width: "5s", Count: 3}
-		got, unit, mod, exp := ttlBucketsFrom(b, 0, nil, 0, 0, 0)
+		got, unit, mod, exp := ttlBucketsFrom(b, 0, nil, 0, 0, 0, 0)
 		if !exp || unit != "seconds" || mod != 1 {
 			t.Fatalf("got exp=%v unit=%q mod=%d", exp, unit, mod)
 		}
@@ -321,7 +357,7 @@ func TestTTLBucketsFrom(t *testing.T) {
 
 	t.Run("exponential builds min/max/count", func(t *testing.T) {
 		b := bucketConfig{Mode: "exponential", Min: "1h", Max: "4h", Count: 3}
-		got, unit, mod, exp := ttlBucketsFrom(b, 0, nil, 0, 0, 0)
+		got, unit, mod, exp := ttlBucketsFrom(b, 0, nil, 0, 0, 0, 0)
 		if !exp || unit != "hours" || mod != 3600 {
 			t.Fatalf("got exp=%v unit=%q mod=%d", exp, unit, mod)
 		}
@@ -333,7 +369,7 @@ func TestTTLBucketsFrom(t *testing.T) {
 	t.Run("auto falls back to fitBuckets on live histogram", func(t *testing.T) {
 		b := bucketConfig{Mode: "auto"}
 		// width 10s, populated 2..5 -> 20..60s; matches fitBuckets behavior.
-		got, unit, _, exp := ttlBucketsFrom(b, 10, []int64{0, 0, 3, 5, 0, 2}, 999, 4, 0)
+		got, unit, _, exp := ttlBucketsFrom(b, 10, []int64{0, 0, 3, 5, 0, 2}, 999, 4, 0, 0)
 		if !exp || unit != "seconds" {
 			t.Fatalf("got exp=%v unit=%q", exp, unit)
 		}

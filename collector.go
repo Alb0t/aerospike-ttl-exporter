@@ -113,7 +113,13 @@ type serviceConf struct {
 	// (and live TTLs to drift past the observed max) between discovery passes
 	// without spilling into +Inf. 0 = no padding.
 	DiscoveryRangePaddingPct int     `yaml:"discoveryRangePaddingPct"`
-	DiscoveryDefaults        monconf `yaml:"discoveryDefaults"`
+	// DiscoveryOutlierPct sets the minimum percentage of total records a
+	// histogram bucket must hold to count as "populated" when fitting the TTL
+	// range. Buckets below this threshold are treated as outlier noise and
+	// excluded from the min/max range computation, preventing a handful of
+	// stray records from blowing out the bucket resolution. 0 = no filtering.
+	DiscoveryOutlierPct float64 `yaml:"discoveryOutlierPct"`
+	DiscoveryDefaults   monconf `yaml:"discoveryDefaults"`
 }
 
 // bucketConfig is the unified histogram bucket specification shared by TTL
@@ -492,7 +498,7 @@ func startSchedulers() []*scheduler.Job {
 // (validateLegacyTTLModes) since this path has no live histogram to fit.
 func buildLegacyHistograms(override monconfOverride) {
 	cfg := override.resolve(monconf{})
-	buckets, ttlUnit, modifier, expirable := ttlBucketsFrom(cfg.TTLBuckets, 0, nil, 0, 0, 0)
+	buckets, ttlUnit, modifier, expirable := ttlBucketsFrom(cfg.TTLBuckets, 0, nil, 0, 0, 0, 0)
 	es := effectiveSet{
 		namespace: cfg.Namespace,
 		set:       cfg.Set,

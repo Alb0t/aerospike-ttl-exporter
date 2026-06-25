@@ -282,17 +282,18 @@ func buildSetEntry(n *as.Node, ns, set string, defaultTTL int) (effectiveSet, er
 		logrus.Debugf("Discovery: %s:%s — found monitor override (ttlBuckets=%+v)", ns, set, ovr.TTLBuckets)
 	}
 	paddingPct := config.Service.DiscoveryRangePaddingPct
+	outlierPct := config.Service.DiscoveryOutlierPct
 	es := buildEffectiveSet(ns, set, width, hist, defaultTTL,
 		config.Service.DiscoveryDefaults, ovr, config.Service.DiscoveryBucketCount,
-		paddingPct)
-	logDiscoveredSet(ns, set, defaultTTL, width, hist, paddingPct, es)
+		paddingPct, outlierPct)
+	logDiscoveredSet(ns, set, defaultTTL, width, hist, paddingPct, outlierPct, es)
 	return es, nil
 }
 
 // logDiscoveredSet emits the one-line discovery summary for a ns:set, plus
 // debug-level detail (when auto-fitting) about how its TTL bucket range was
 // derived. set=="" is rendered as the synthetic null set.
-func logDiscoveredSet(ns, set string, defaultTTL, bucketWidthSec int, hist []int64, paddingPct int, es effectiveSet) {
+func logDiscoveredSet(ns, set string, defaultTTL, bucketWidthSec int, hist []int64, paddingPct int, outlierPct float64, es effectiveSet) {
 	label := ns + ":" + set
 	if set == NullSet {
 		label = ns + ":(null)"
@@ -307,21 +308,21 @@ func logDiscoveredSet(ns, set string, defaultTTL, bucketWidthSec int, hist []int
 			label, mode, len(es.buckets), lo, hi, es.ttlUnit)
 		return
 	}
-	logAutoFitDetails(label, defaultTTL, bucketWidthSec, hist, paddingPct)
+	logAutoFitDetails(label, defaultTTL, bucketWidthSec, hist, paddingPct, outlierPct)
 	logrus.Infof("Discovery: %s — %d buckets [%.1f..%.1f] %s (default-ttl=%ds)",
 		label, len(es.buckets), lo, hi, es.ttlUnit, defaultTTL)
 }
 
 // logAutoFitDetails debug-logs the derivation of an auto-fit TTL range: the
 // populated histogram span, the padding applied, and the resulting display unit.
-func logAutoFitDetails(label string, defaultTTL, bucketWidthSec int, hist []int64, paddingPct int) {
-	minSec, maxSec, ok := populatedRangeSec(bucketWidthSec, hist)
+func logAutoFitDetails(label string, defaultTTL, bucketWidthSec int, hist []int64, paddingPct int, outlierPct float64) {
+	minSec, maxSec, ok := populatedRangeSec(bucketWidthSec, hist, outlierPct)
 	if !ok {
 		logrus.Debugf("Discovery: %s — histogram empty, falling back to default-ttl=%ds as range [0, %d]",
 			label, defaultTTL, defaultTTL)
 	} else {
-		logrus.Debugf("Discovery: %s — histogram bucket-width=%ds, populated range [%d, %d]s (buckets %d–%d of %d)",
-			label, bucketWidthSec, minSec, maxSec, minSec/bucketWidthSec, maxSec/bucketWidthSec, len(hist))
+		logrus.Debugf("Discovery: %s — histogram bucket-width=%ds, populated range [%d, %d]s (buckets %d–%d of %d, outlierPct=%.1f%%)",
+			label, bucketWidthSec, minSec, maxSec, minSec/bucketWidthSec, maxSec/bucketWidthSec, len(hist), outlierPct)
 	}
 	unpaddedMax := maxSec
 	if !ok {
@@ -349,7 +350,7 @@ func findOverride(list []monconfOverride, ns, set string) *monconfOverride {
 // ns:set. defaults supply the base config; override (if non-nil) overlays it
 // field-by-field. n is the discovery bucket count. A non-expirable set carries
 // nil buckets and expirable=false so the registry skips its TTL histograms.
-func buildEffectiveSet(ns, set string, bucketWidthSec int, histBuckets []int64, defaultTTL int, defaults monconf, override *monconfOverride, n, paddingPct int) effectiveSet {
+func buildEffectiveSet(ns, set string, bucketWidthSec int, histBuckets []int64, defaultTTL int, defaults monconf, override *monconfOverride, n, paddingPct int, outlierPct float64) effectiveSet {
 	cfg := defaults
 	if override != nil {
 		cfg = override.resolve(defaults)
@@ -358,7 +359,7 @@ func buildEffectiveSet(ns, set string, bucketWidthSec int, histBuckets []int64, 
 	cfg.Set = set
 
 	buckets, unit, modifier, expirable := ttlBucketsFrom(
-		cfg.TTLBuckets, bucketWidthSec, histBuckets, defaultTTL, n, paddingPct)
+		cfg.TTLBuckets, bucketWidthSec, histBuckets, defaultTTL, n, paddingPct, outlierPct)
 
 	return effectiveSet{
 		namespace: ns,
