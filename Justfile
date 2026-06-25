@@ -30,6 +30,13 @@ deploy hostname:
 
 # Unit tests (bucket resolvers, gauges, discovery, config decode)
 test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bad=$(gofmt -l .)
+    if [[ -n "$bad" ]]; then
+        echo "gofmt needed on: $bad" >&2
+        exit 1
+    fi
     go test ./...
 
 # Run locally against a remote Aerospike node (set AS_USER/AS_PASS to override creds)

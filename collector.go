@@ -112,7 +112,7 @@ type serviceConf struct {
 	// percentage, leaving headroom for the Aerospike ttl histogram to rescale
 	// (and live TTLs to drift past the observed max) between discovery passes
 	// without spilling into +Inf. 0 = no padding.
-	DiscoveryRangePaddingPct int     `yaml:"discoveryRangePaddingPct"`
+	DiscoveryRangePaddingPct int `yaml:"discoveryRangePaddingPct"`
 	// DiscoveryOutlierPct sets the minimum percentage of total records a
 	// histogram bucket must hold to count as "populated" when fitting the TTL
 	// range. Buckets below this threshold are treated as outlier noise and
