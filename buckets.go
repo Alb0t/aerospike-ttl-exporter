@@ -32,12 +32,22 @@ func pickUnit(maxSec int) (unit string, modifier int) {
 }
 
 // populatedRangeSec returns the seconds-range [minSec, maxSec) spanned by the
-// populated (non-zero) buckets of an Aerospike ttl histogram, given the
-// per-bucket width. ok is false when no bucket holds any records.
-func populatedRangeSec(bucketWidthSec int, buckets []int64) (minSec, maxSec int, ok bool) {
+// populated buckets of an Aerospike ttl histogram, given the per-bucket width.
+// ok is false when no bucket holds any records above the threshold.
+// outlierPct (0–100) sets the minimum percentage of total records a bucket must
+// hold to count as populated; buckets below this are treated as outlier noise.
+func populatedRangeSec(bucketWidthSec int, buckets []int64, outlierPct float64) (minSec, maxSec int, ok bool) {
+	var minCount int64
+	if outlierPct > 0 {
+		var total int64
+		for _, c := range buckets {
+			total += c
+		}
+		minCount = int64(float64(total) * outlierPct / 100)
+	}
 	first, last := -1, -1
 	for i, c := range buckets {
-		if c <= 0 {
+		if c <= minCount {
 			continue
 		}
 		if first == -1 {
@@ -98,8 +108,8 @@ func linearOrExp(scale string, start, width, top, loFloor float64, n int) []floa
 // record TTLs can drift past the fitted top edge between discovery passes; the
 // padding keeps that drift out of +Inf. scale picks linear (default) or
 // exponential spacing.
-func fitBuckets(bucketWidthSec int, buckets []int64, defaultTTL, n, paddingPct int, scale string) (bucketFloats []float64, unit string, modifier int, expirable bool) {
-	minSec, maxSec, ok := populatedRangeSec(bucketWidthSec, buckets)
+func fitBuckets(bucketWidthSec int, buckets []int64, defaultTTL, n, paddingPct int, scale string, outlierPct float64) (bucketFloats []float64, unit string, modifier int, expirable bool) {
+	minSec, maxSec, ok := populatedRangeSec(bucketWidthSec, buckets, outlierPct)
 	if !ok {
 		if defaultTTL <= 0 {
 			return nil, "", 0, false
@@ -146,9 +156,9 @@ func bucketsFromMode(b bucketConfig, parse func([]string) []float64) []float64 {
 // modifier. static/linear/exponential are computed directly from config (TTL
 // values carry d/h/s suffixes parsed by parseTimeValues); auto and empty mode
 // fall back to fitBuckets, deriving the range from the live ttl histogram.
-func ttlBucketsFrom(b bucketConfig, bucketWidthSec int, histBuckets []int64, defaultTTL, n, paddingPct int) (buckets []float64, unit string, modifier int, expirable bool) {
+func ttlBucketsFrom(b bucketConfig, bucketWidthSec int, histBuckets []int64, defaultTTL, n, paddingPct int, outlierPct float64) (buckets []float64, unit string, modifier int, expirable bool) {
 	if b.Mode == "" || b.Mode == "auto" {
-		return fitBuckets(bucketWidthSec, histBuckets, defaultTTL, n, paddingPct, b.Scale)
+		return fitBuckets(bucketWidthSec, histBuckets, defaultTTL, n, paddingPct, b.Scale, outlierPct)
 	}
 	parse := func(arr []string) []float64 {
 		vals, u, mod := parseTimeValues(arr)
