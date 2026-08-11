@@ -37,3 +37,6 @@ service:
       min: 1
       max: 8389000 # 8 MiB — max aerospike record size (7.0+)
       count: 10
+    # quantileTargets: exact quantile percentiles to compute for TTL and size
+    # distributions. Values must be in (0, 1). Defaults to [0.20, 0.50, 0.90, 0.99].
+    # quantileTargets: [0.20, 0.50, 0.90, 0.99]

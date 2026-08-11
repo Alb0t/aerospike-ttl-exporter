@@ -36,6 +36,9 @@ monitor:
       min: 1
       max: 8389000 # 8 MiB — max aerospike record size (7.0+)
       count: 10
+    # quantileTargets: exact quantile percentiles for TTL and size summaries.
+    # Defaults to [0.20, 0.50, 0.90, 0.99] if omitted.
+    # quantileTargets: [0.50, 0.90, 0.99]
 
   # A whole namespace (set: null) with evenly-spaced linear TTL buckets.
   - namespace: events

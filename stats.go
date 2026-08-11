@@ -293,9 +293,10 @@ func runnerDiscovery() {
 // updating the scan-time and last-updated gauges. Overlap protection lives in
 // the caller: runner() holds the `running` guard for the entire scan cycle.
 func scanOne(element monconf, hs *histSet) {
-	// while I am splitting namespace and set for aerospike calls and metric display,
-	// the metrics are stored in a map so preserving the original "ns" var
 	startTime := float64(time.Now().Unix())
+	if hs.quantiles != nil {
+		hs.quantiles.reset()
+	}
 	err := updateStats(element.Namespace, element.Set, element, hs)
 	finishTime := float64(time.Now().Unix())
 	timeToUpdate := float64((finishTime - startTime))
@@ -306,7 +307,9 @@ func scanOne(element monconf, hs *histSet) {
 	if err != "" {
 		logrus.Error("There was a problem updating the stats.", err)
 	} else {
-		// Only update the "aerospike_ttl_scan_last_updated" metric if the update was successful.
+		if hs.quantiles != nil {
+			hs.quantiles.finalize()
+		}
 		scanLastUpdated.WithLabelValues(element.Namespace, element.Set).Set(finishTime)
 	}
 }
@@ -409,8 +412,6 @@ func (r *ttlRange) publish(namespace, set string) {
 // toward the exported total). Non-expirable records are skipped.
 func processRecord(rec *as.Result, element monconf, hs *histSet, ttls *ttlRange) bool {
 	if rec.Record.Expiration == NON_EXPIRABLE_TTL_VALUE {
-		// size histograms are still recorded for non-expirable records; kbyte is skipped
-		// since it requires a meaningful TTL value as the observed dimension.
 		if element.SizeHistogramEnabled && hs.sizes != nil {
 			recordsize, err := measureRecordSize(client.Load(), rec.Record.Key, measureOps, opPolicy)
 			if err != nil && err != as.ErrKeyNotFound {
@@ -418,6 +419,9 @@ func processRecord(rec *as.Result, element monconf, hs *histSet, ttls *ttlRange)
 			}
 			if recordsize != 0 {
 				hs.sizes.WithLabelValues("recordsize").Observe(float64(recordsize))
+				if hs.quantiles != nil {
+					hs.quantiles.observeSize(float64(recordsize))
+				}
 			}
 		}
 		return false
@@ -428,10 +432,11 @@ func processRecord(rec *as.Result, element monconf, hs *histSet, ttls *ttlRange)
 		modifier = 1 // guard div-by-zero; expirable sets always set this
 	}
 	expireTime := float64(rec.Record.Expiration) / float64(modifier)
-	// counts is nil for sets discovered as non-expirable; skip the TTL observe
-	// (a stray expirable record may still appear during a race).
 	if hs.counts != nil {
 		hs.counts.WithLabelValues().Observe(expireTime)
+	}
+	if hs.quantiles != nil {
+		hs.quantiles.observeTTL(expireTime)
 	}
 	observeRecordSize(rec, element, hs, expireTime)
 	return true
@@ -455,6 +460,9 @@ func observeRecordSize(rec *as.Result, element monconf, hs *histSet, expireTime 
 	}
 	if element.SizeHistogramEnabled && hs.sizes != nil && recordsize != 0 {
 		hs.sizes.WithLabelValues("recordsize").Observe(float64(recordsize))
+	}
+	if hs.quantiles != nil && recordsize != 0 {
+		hs.quantiles.observeSize(float64(recordsize))
 	}
 }
 

@@ -37,6 +37,7 @@ service:
       min: 1
       max: 8389000
       count: 10
+    # quantileTargets: [0.20, 0.50, 0.90, 0.99]  # default; override per set below
 
 monitor:
   # metrics:timeseries is heavily skewed — most records expire soon with a long
@@ -51,9 +52,11 @@ monitor:
 
   # audit:log has a fixed contractual retention — pin explicit static buckets
   # instead of auto-fitting, and skip the size histogram for this set.
+  # audit:log — override quantile targets to only track p50/p99
   - namespace: audit
     set: log
     sizeHistogramEnabled: false
+    quantileTargets: [0.50, 0.99]
     ttlBuckets:
       mode: static
       static: [30d, 90d, 180d, 270d, 365d]

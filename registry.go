@@ -41,10 +41,11 @@ func nsSetKey(ns, set string) string {
 // Two effectiveSets with equal signatures produce identical collectors, so the
 // registry can skip unregister/re-register churn when the signature is unchanged.
 func (e effectiveSet) signature() string {
-	return fmt.Sprintf("exp=%t|unit=%s|buckets=%v|kb=%t|size=%t|sb=%+v",
+	return fmt.Sprintf("exp=%t|unit=%s|buckets=%v|kb=%t|size=%t|sb=%+v|qt=%v",
 		e.expirable, e.ttlUnit, e.buckets,
 		e.cfg.KByteHistogramEnabled,
-		e.cfg.SizeHistogramEnabled, e.cfg.SizeBuckets)
+		e.cfg.SizeHistogramEnabled, e.cfg.SizeBuckets,
+		resolveQuantileTargets(e.cfg.QuantileTargets))
 }
 
 // histSet holds the live collectors for one ns:set plus the signature they were
@@ -56,6 +57,7 @@ type histSet struct {
 	counts    *prometheus.HistogramVec
 	bytes     *kibCollector
 	sizes     *prometheus.HistogramVec
+	quantiles *quantileCollector
 	modifier  int
 	sig       string
 }
@@ -141,6 +143,7 @@ func dropSetGauges(ns, set string) {
 	maxTTLGauge.DeleteLabelValues(ns, set)
 	scanTimes.DeleteLabelValues(ns, set)
 	scanLastUpdated.DeleteLabelValues(ns, set)
+	quantileRefreshTS.DeleteLabelValues(ns, set)
 }
 
 // newCountsHist builds the counts_hist (records-per-ttl-bucket) collector. It is
@@ -190,6 +193,11 @@ func buildHistSet(reg prometheus.Registerer, e effectiveSet, sig string) *histSe
 		reg.MustRegister(hs.sizes)
 	}
 
+	if targets := resolveQuantileTargets(e.cfg.QuantileTargets); len(targets) > 0 {
+		hs.quantiles = newQuantileCollector(e.namespace, e.set, e.ttlUnit, targets)
+		reg.MustRegister(hs.quantiles)
+	}
+
 	return hs
 }
 
@@ -205,5 +213,8 @@ func (r *histRegistry) unregister(hs *histSet) {
 	}
 	if hs.sizes != nil {
 		r.reg.Unregister(hs.sizes)
+	}
+	if hs.quantiles != nil {
+		r.reg.Unregister(hs.quantiles)
 	}
 }

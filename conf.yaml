@@ -61,6 +61,10 @@ service:
       min: 1
       max: 8389000
       count: 10
+    # quantileTargets: exact quantile percentiles computed from the full scan
+    # dataset for TTL and record size distributions. Exposed as Prometheus
+    # Summary metrics. Values must be in (0, 1). Override per set in monitor.
+    # quantileTargets: [0.20, 0.50, 0.90, 0.99]  # default; set to [] to disable
   ## --------------------------------------------------------------------------
 
 monitor:
