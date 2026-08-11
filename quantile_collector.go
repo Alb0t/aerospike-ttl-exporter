@@ -45,6 +45,8 @@ type quantileCollector struct {
 
 	ttlUnit string
 	targets []float64
+	ttlD    *prometheus.Desc
+	sizeD   *prometheus.Desc
 }
 
 type quantileResult struct {
@@ -59,6 +61,18 @@ func newQuantileCollector(namespace, set, ttlUnit string, targets []float64) *qu
 		set:       set,
 		ttlUnit:   ttlUnit,
 		targets:   targets,
+		ttlD: prometheus.NewDesc(
+			"aerospike_ttl_ttl_quantiles",
+			"Exact quantile summary of record TTLs from the most recent complete scan.",
+			nil,
+			prometheus.Labels{"namespace": namespace, "set": set, "ttlUnit": ttlUnit},
+		),
+		sizeD: prometheus.NewDesc(
+			"aerospike_ttl_size_bytes_quantiles",
+			"Exact quantile summary of record sizes (bytes) from the most recent complete scan.",
+			nil,
+			prometheus.Labels{"namespace": namespace, "set": set},
+		),
 	}
 }
 
@@ -70,15 +84,11 @@ func (q *quantileCollector) reset() {
 }
 
 func (q *quantileCollector) observeTTL(v float64) {
-	q.mu.Lock()
 	q.stagingTTL = append(q.stagingTTL, v)
-	q.mu.Unlock()
 }
 
 func (q *quantileCollector) observeSize(v float64) {
-	q.mu.Lock()
 	q.stagingSize = append(q.stagingSize, v)
-	q.mu.Unlock()
 }
 
 func (q *quantileCollector) finalize() {
@@ -120,8 +130,8 @@ func exactQuantile(sorted []float64, q float64) float64 {
 }
 
 func (q *quantileCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- q.ttlDesc()
-	ch <- q.sizeDesc()
+	ch <- q.ttlD
+	ch <- q.sizeD
 }
 
 func (q *quantileCollector) Collect(ch chan<- prometheus.Metric) {
@@ -131,29 +141,11 @@ func (q *quantileCollector) Collect(ch chan<- prometheus.Metric) {
 	q.mu.Unlock()
 
 	if liveTTL != nil {
-		ch <- q.summaryMetric(q.ttlDesc(), liveTTL)
+		ch <- q.summaryMetric(q.ttlD, liveTTL)
 	}
 	if liveSize != nil {
-		ch <- q.summaryMetric(q.sizeDesc(), liveSize)
+		ch <- q.summaryMetric(q.sizeD, liveSize)
 	}
-}
-
-func (q *quantileCollector) ttlDesc() *prometheus.Desc {
-	return prometheus.NewDesc(
-		"aerospike_ttl_ttl_quantiles",
-		"Exact quantile summary of record TTLs from the most recent complete scan.",
-		nil,
-		prometheus.Labels{"namespace": q.namespace, "set": q.set, "ttlUnit": q.ttlUnit},
-	)
-}
-
-func (q *quantileCollector) sizeDesc() *prometheus.Desc {
-	return prometheus.NewDesc(
-		"aerospike_ttl_size_bytes_quantiles",
-		"Exact quantile summary of record sizes (bytes) from the most recent complete scan.",
-		nil,
-		prometheus.Labels{"namespace": q.namespace, "set": q.set},
-	)
 }
 
 func (q *quantileCollector) summaryMetric(desc *prometheus.Desc, r *quantileResult) prometheus.Metric {
