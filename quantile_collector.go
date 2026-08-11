@@ -11,11 +11,13 @@ import (
 
 var defaultQuantileTargets = []float64{0.20, 0.50, 0.90, 0.99}
 
+// resolveQuantileTargets returns the effective quantile list. nil (unconfigured)
+// falls back to defaults; an explicit empty list disables quantiles entirely.
 func resolveQuantileTargets(configured []float64) []float64 {
-	if len(configured) > 0 {
-		return configured
+	if configured == nil {
+		return defaultQuantileTargets
 	}
-	return defaultQuantileTargets
+	return configured
 }
 
 var quantileRefreshTS = prometheus.NewGaugeVec(

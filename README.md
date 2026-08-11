@@ -50,6 +50,13 @@ sum(rate(aerospike_ttl_kib_hist_bucket{namespace="myns",le="+Inf"}[$__rate_inter
 # Result: 1.4
 ```
 
+### What's the exact p99 record size? (no histogram bucket rounding)
+```promql
+aerospike_ttl_size_bytes_quantiles{namespace="myns",quantile="0.99"}
+# Result: 204
+# Interpreted: 99% of records are ≤204 bytes — exact, not histogram-interpolated
+```
+
 ### Conclusions: an abnormal distribution where the largest records are updated more often.
 
 ### How will my evict-void-time change if I evict 10% of my data earlier?
@@ -82,6 +89,16 @@ All metrics are in the `aerospike_ttl_` namespace.
 | `counts_hist` | `namespace`, `set`, `ttlUnit` | Records per TTL bucket. |
 | `kib_hist` | `namespace`, `set`, `ttlUnit`, `storage_type` | KiB per TTL bucket, size-weighted (`storage_type=recordsize`). Requires `kbyteHistogramEnabled: true`. |
 | `size_bytes_hist` | `namespace`, `set`, `metadata_op` | Record size distribution in raw bytes (`metadata_op=recordsize`). Requires `sizeHistogramEnabled: true`. Uses `sizeBuckets` config. |
+
+### Per-set quantile summaries
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `ttl_quantiles` | Summary | `namespace`, `set`, `ttlUnit`, `quantile` | Exact quantile summary of record TTLs from the most recent complete scan (in display units). |
+| `size_bytes_quantiles` | Summary | `namespace`, `set`, `quantile` | Exact quantile summary of record sizes (bytes) from the most recent complete scan. |
+| `quantile_last_refresh_success_ts` | Gauge | `namespace`, `set` | Unix epoch when quantile summaries were last successfully computed. Use to detect stale data. |
+
+Quantile summaries are computed from the full scan dataset — not streaming estimates — so they are exact for the sampled records. They are **double-buffered**: partial or failed scans never export; the prior successful run's values persist until the next run completes. By default p20/p50/p90/p99 are emitted; configure with `quantileTargets` (see below). Set `quantileTargets: []` to disable.
 
 ### Per-set gauges
 
@@ -126,6 +143,19 @@ aerospike_ttl_size_bytes_hist_bucket{metadata_op="recordsize",namespace="test",s
 aerospike_ttl_size_bytes_hist_bucket{metadata_op="recordsize",namespace="test",set="myset",le="+Inf"} 200
 aerospike_ttl_size_bytes_hist_sum{metadata_op="recordsize",namespace="test",set="myset"} 16320
 aerospike_ttl_size_bytes_hist_count{metadata_op="recordsize",namespace="test",set="myset"} 200
+aerospike_ttl_ttl_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.2"} 23.99
+aerospike_ttl_ttl_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.5"} 23.997
+aerospike_ttl_ttl_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.9"} 23.997
+aerospike_ttl_ttl_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.99"} 23.997
+aerospike_ttl_ttl_quantiles_sum{namespace="test",set="myset",ttlUnit="hours"} 4799.08
+aerospike_ttl_ttl_quantiles_count{namespace="test",set="myset",ttlUnit="hours"} 200
+aerospike_ttl_size_bytes_quantiles{namespace="test",set="myset",quantile="0.2"} 81
+aerospike_ttl_size_bytes_quantiles{namespace="test",set="myset",quantile="0.5"} 81
+aerospike_ttl_size_bytes_quantiles{namespace="test",set="myset",quantile="0.9"} 82
+aerospike_ttl_size_bytes_quantiles{namespace="test",set="myset",quantile="0.99"} 82
+aerospike_ttl_size_bytes_quantiles_sum{namespace="test",set="myset"} 16320
+aerospike_ttl_size_bytes_quantiles_count{namespace="test",set="myset"} 200
+aerospike_ttl_quantile_last_refresh_success_ts{namespace="test",set="myset"} 1.782252482e+09
 aerospike_ttl_scan_last_updated{namespace="test",set="myset"} 1.782252482e+09
 aerospike_ttl_scan_time_seconds{namespace="test",set="myset"} 0
 ```
@@ -227,6 +257,7 @@ Config is validated on load. Fatal startup errors for:
 - `mode: exponential` with `min <= 0`, `max <= min`, or `count <= 0`
 - `sizeHistogramEnabled: true` without a `sizeBuckets` mode
 - `autoDiscover: false` with any `monitor:` entry missing an explicit `ttlBuckets` mode (or using `auto`/empty)
+- `quantileTargets` with values outside `(0, 1)`
 
 ## Configuration reference
 
@@ -271,6 +302,7 @@ Each entry targets one namespace/set. In auto-discovery mode they act as per-set
 | `sizeHistogramEnabled` | bool | Enable `size_bytes_hist` (record-size distribution). |
 | `ttlBuckets` | bucketConfig | TTL histogram bucket config (see Bucket configuration). |
 | `sizeBuckets` | bucketConfig | Size histogram bucket config (see Bucket configuration). |
+| `quantileTargets` | []float64 | Quantile percentiles to compute for TTL and size summaries. Values in `(0, 1)`. Default: `[0.20, 0.50, 0.90, 0.99]`. Set to `[]` to disable quantile summaries entirely. |
 
 ## Debug logging
 

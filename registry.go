@@ -193,8 +193,10 @@ func buildHistSet(reg prometheus.Registerer, e effectiveSet, sig string) *histSe
 		reg.MustRegister(hs.sizes)
 	}
 
-	hs.quantiles = newQuantileCollector(e.namespace, e.set, e.ttlUnit, resolveQuantileTargets(e.cfg.QuantileTargets))
-	reg.MustRegister(hs.quantiles)
+	if targets := resolveQuantileTargets(e.cfg.QuantileTargets); len(targets) > 0 {
+		hs.quantiles = newQuantileCollector(e.namespace, e.set, e.ttlUnit, targets)
+		reg.MustRegister(hs.quantiles)
+	}
 
 	return hs
 }
