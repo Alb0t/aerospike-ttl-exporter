@@ -56,6 +56,7 @@ type histSet struct {
 	counts    *prometheus.HistogramVec
 	bytes     *kibCollector
 	sizes     *prometheus.HistogramVec
+	quantiles *quantileCollector
 	modifier  int
 	sig       string
 }
@@ -141,6 +142,7 @@ func dropSetGauges(ns, set string) {
 	maxTTLGauge.DeleteLabelValues(ns, set)
 	scanTimes.DeleteLabelValues(ns, set)
 	scanLastUpdated.DeleteLabelValues(ns, set)
+	quantileRefreshTS.DeleteLabelValues(ns, set)
 }
 
 // newCountsHist builds the counts_hist (records-per-ttl-bucket) collector. It is
@@ -190,6 +192,9 @@ func buildHistSet(reg prometheus.Registerer, e effectiveSet, sig string) *histSe
 		reg.MustRegister(hs.sizes)
 	}
 
+	hs.quantiles = newQuantileCollector(e.namespace, e.set, e.ttlUnit)
+	reg.MustRegister(hs.quantiles)
+
 	return hs
 }
 
@@ -205,5 +210,8 @@ func (r *histRegistry) unregister(hs *histSet) {
 	}
 	if hs.sizes != nil {
 		r.reg.Unregister(hs.sizes)
+	}
+	if hs.quantiles != nil {
+		r.reg.Unregister(hs.quantiles)
 	}
 }

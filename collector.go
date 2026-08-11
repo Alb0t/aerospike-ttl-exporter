@@ -460,6 +460,7 @@ func registerCoreMetrics() {
 	prometheus.MustRegister(defaultTTLGauge)
 	prometheus.MustRegister(minTTLGauge)
 	prometheus.MustRegister(maxTTLGauge)
+	prometheus.MustRegister(quantileRefreshTS)
 	prometheus.MustRegister(buildInfo)
 	buildInfo.WithLabelValues(buildVersion, buildCommit).Set(1)
 }
