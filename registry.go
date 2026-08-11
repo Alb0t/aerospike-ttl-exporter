@@ -41,10 +41,11 @@ func nsSetKey(ns, set string) string {
 // Two effectiveSets with equal signatures produce identical collectors, so the
 // registry can skip unregister/re-register churn when the signature is unchanged.
 func (e effectiveSet) signature() string {
-	return fmt.Sprintf("exp=%t|unit=%s|buckets=%v|kb=%t|size=%t|sb=%+v",
+	return fmt.Sprintf("exp=%t|unit=%s|buckets=%v|kb=%t|size=%t|sb=%+v|qt=%v",
 		e.expirable, e.ttlUnit, e.buckets,
 		e.cfg.KByteHistogramEnabled,
-		e.cfg.SizeHistogramEnabled, e.cfg.SizeBuckets)
+		e.cfg.SizeHistogramEnabled, e.cfg.SizeBuckets,
+		resolveQuantileTargets(e.cfg.QuantileTargets))
 }
 
 // histSet holds the live collectors for one ns:set plus the signature they were
@@ -192,7 +193,7 @@ func buildHistSet(reg prometheus.Registerer, e effectiveSet, sig string) *histSe
 		reg.MustRegister(hs.sizes)
 	}
 
-	hs.quantiles = newQuantileCollector(e.namespace, e.set, e.ttlUnit)
+	hs.quantiles = newQuantileCollector(e.namespace, e.set, e.ttlUnit, resolveQuantileTargets(e.cfg.QuantileTargets))
 	reg.MustRegister(hs.quantiles)
 
 	return hs

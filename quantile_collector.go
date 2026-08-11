@@ -9,7 +9,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var quantileTargets = []float64{0.20, 0.50, 0.90, 0.99}
+var defaultQuantileTargets = []float64{0.20, 0.50, 0.90, 0.99}
+
+func resolveQuantileTargets(configured []float64) []float64 {
+	if len(configured) > 0 {
+		return configured
+	}
+	return defaultQuantileTargets
+}
 
 var quantileRefreshTS = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
@@ -35,6 +42,7 @@ type quantileCollector struct {
 	liveSize *quantileResult
 
 	ttlUnit string
+	targets []float64
 }
 
 type quantileResult struct {
@@ -43,11 +51,12 @@ type quantileResult struct {
 	quantiles map[float64]float64
 }
 
-func newQuantileCollector(namespace, set, ttlUnit string) *quantileCollector {
+func newQuantileCollector(namespace, set, ttlUnit string, targets []float64) *quantileCollector {
 	return &quantileCollector{
 		namespace: namespace,
 		set:       set,
 		ttlUnit:   ttlUnit,
+		targets:   targets,
 	}
 }
 
@@ -73,12 +82,12 @@ func (q *quantileCollector) observeSize(v float64) {
 func (q *quantileCollector) finalize() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.liveTTL = computeQuantiles(q.stagingTTL)
-	q.liveSize = computeQuantiles(q.stagingSize)
+	q.liveTTL = computeQuantiles(q.stagingTTL, q.targets)
+	q.liveSize = computeQuantiles(q.stagingSize, q.targets)
 	quantileRefreshTS.WithLabelValues(q.namespace, q.set).Set(float64(time.Now().Unix()))
 }
 
-func computeQuantiles(data []float64) *quantileResult {
+func computeQuantiles(data []float64, targets []float64) *quantileResult {
 	if len(data) == 0 {
 		return nil
 	}
@@ -87,8 +96,8 @@ func computeQuantiles(data []float64) *quantileResult {
 	for _, v := range data {
 		sum += v
 	}
-	qm := make(map[float64]float64, len(quantileTargets))
-	for _, qt := range quantileTargets {
+	qm := make(map[float64]float64, len(targets))
+	for _, qt := range targets {
 		qm[qt] = exactQuantile(data, qt)
 	}
 	return &quantileResult{count: uint64(len(data)), sum: sum, quantiles: qm}
@@ -146,7 +155,13 @@ func (q *quantileCollector) sizeDesc() *prometheus.Desc {
 }
 
 func (q *quantileCollector) summaryMetric(desc *prometheus.Desc, r *quantileResult) prometheus.Metric {
-	m, err := prometheus.NewConstSummary(desc, r.count, r.sum, r.quantiles)
+	qv := make(map[float64]float64, len(q.targets))
+	for _, qt := range q.targets {
+		if v, ok := r.quantiles[qt]; ok {
+			qv[qt] = v
+		}
+	}
+	m, err := prometheus.NewConstSummary(desc, r.count, r.sum, qv)
 	if err != nil {
 		panic(err)
 	}

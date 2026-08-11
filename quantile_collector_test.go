@@ -29,7 +29,7 @@ func TestExactQuantile(t *testing.T) {
 }
 
 func TestComputeQuantilesEmpty(t *testing.T) {
-	r := computeQuantiles(nil)
+	r := computeQuantiles(nil, defaultQuantileTargets)
 	if r != nil {
 		t.Error("expected nil for empty data")
 	}
@@ -37,7 +37,7 @@ func TestComputeQuantilesEmpty(t *testing.T) {
 
 func TestQuantileCollectorDoubleBuffer(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	qc := newQuantileCollector("testns", "testset", "seconds")
+	qc := newQuantileCollector("testns", "testset", "seconds", defaultQuantileTargets)
 	reg.MustRegister(qc)
 
 	// before any finalize, should emit nothing

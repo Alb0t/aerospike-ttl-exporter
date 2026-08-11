@@ -158,6 +158,7 @@ type monconf struct {
 	SizeHistogramEnabled  bool         `yaml:"sizeHistogramEnabled"`
 	TTLBuckets            bucketConfig `yaml:"ttlBuckets"`
 	SizeBuckets           bucketConfig `yaml:"sizeBuckets"`
+	QuantileTargets       []float64    `yaml:"quantileTargets,omitempty"`
 }
 
 // monconfOverride mirrors monconf but with pointer fields for every
@@ -180,6 +181,7 @@ type monconfOverride struct {
 	SizeHistogramEnabled  *bool         `yaml:"sizeHistogramEnabled,omitempty"`
 	TTLBuckets            *bucketConfig `yaml:"ttlBuckets,omitempty"`
 	SizeBuckets           *bucketConfig `yaml:"sizeBuckets,omitempty"`
+	QuantileTargets       *[]float64    `yaml:"quantileTargets,omitempty"`
 }
 
 // resolve produces a concrete monconf by starting from base and overwriting only
@@ -204,6 +206,7 @@ func (o monconfOverride) resolve(base monconf) monconf {
 	// a non-nil override block entirely supplants the default.
 	setIfPresent(&m.TTLBuckets, o.TTLBuckets)
 	setIfPresent(&m.SizeBuckets, o.SizeBuckets)
+	setIfPresent(&m.QuantileTargets, o.QuantileTargets)
 	return m
 }
 
@@ -245,6 +248,7 @@ func (c *conf) validate() {
 	if c.Service.AutoDiscover && c.Service.DiscoveryDefaults.Recordcount == 0 {
 		c.Service.DiscoveryDefaults.Recordcount = -1
 	}
+	validateQuantileTargets(c.Service.DiscoveryDefaults.QuantileTargets)
 	c.Service.DiscoveryDefaults.TTLBuckets.validate("ttl")
 	c.Service.DiscoveryDefaults.SizeBuckets.validate("size")
 	c.Service.DiscoveryDefaults.validateSizeHistBuckets()
@@ -256,6 +260,9 @@ func (c *conf) validate() {
 			c.Monitor[i].SizeBuckets.validate("size")
 		}
 		c.Monitor[i].validateSizeHistBuckets(c.Service.DiscoveryDefaults)
+		if c.Monitor[i].QuantileTargets != nil {
+			validateQuantileTargets(*c.Monitor[i].QuantileTargets)
+		}
 	}
 	if !c.Service.AutoDiscover {
 		c.validateLegacyTTLModes()
@@ -345,6 +352,14 @@ func (o monconfOverride) validateSizeHistBuckets(defaults monconf) {
 	if resolved.SizeHistogramEnabled && resolved.SizeBuckets.Mode == "" {
 		log.Fatalf("monitor entry %s:%s enables sizeHistogramEnabled but has no sizeBuckets mode (need static|linear|exponential)",
 			o.Namespace, o.Set)
+	}
+}
+
+func validateQuantileTargets(targets []float64) {
+	for _, q := range targets {
+		if q <= 0 || q >= 1 {
+			log.Fatalf("quantileTargets values must be in (0, 1), got %f", q)
+		}
 	}
 }
 
