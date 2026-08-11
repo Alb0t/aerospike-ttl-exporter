@@ -66,3 +66,26 @@ func TestQuantileCollectorDoubleBuffer(t *testing.T) {
 		t.Errorf("expected 2 metrics during partial scan, got %d", count)
 	}
 }
+
+func TestFinalizeEmptyClearsLive(t *testing.T) {
+	qc := newQuantileCollector("ns", "set", "seconds", defaultQuantileTargets)
+
+	for i := 1; i <= 50; i++ {
+		qc.observeTTL(float64(i))
+		qc.observeSize(float64(i * 10))
+	}
+	qc.finalize()
+
+	count := testutil.CollectAndCount(qc)
+	if count != 2 {
+		t.Fatalf("expected 2 metrics after first finalize, got %d", count)
+	}
+
+	qc.reset()
+	qc.finalize()
+
+	count = testutil.CollectAndCount(qc)
+	if count != 0 {
+		t.Errorf("expected 0 metrics after empty finalize, got %d", count)
+	}
+}
