@@ -412,13 +412,15 @@ func (r *ttlRange) publish(namespace, set string) {
 // toward the exported total). Non-expirable records are skipped.
 func processRecord(rec *as.Result, element monconf, hs *histSet, ttls *ttlRange) bool {
 	if rec.Record.Expiration == NON_EXPIRABLE_TTL_VALUE {
-		if element.SizeHistogramEnabled && hs.sizes != nil {
+		if element.SizeHistogramEnabled || hs.quantiles != nil {
 			recordsize, err := measureRecordSize(client.Load(), rec.Record.Key, measureOps, opPolicy)
 			if err != nil && err != as.ErrKeyNotFound {
 				logrus.Errorf("Failure fetching record size. Err: %v", err)
 			}
 			if recordsize != 0 {
-				hs.sizes.WithLabelValues("recordsize").Observe(float64(recordsize))
+				if element.SizeHistogramEnabled && hs.sizes != nil {
+					hs.sizes.WithLabelValues("recordsize").Observe(float64(recordsize))
+				}
 				if hs.quantiles != nil {
 					hs.quantiles.observeSize(float64(recordsize))
 				}
@@ -446,7 +448,7 @@ func processRecord(rec *as.Result, element monconf, hs *histSet, ttls *ttlRange)
 // and feeds the kib/size histograms when enabled. The read is skipped entirely
 // when neither histogram is enabled, avoiding a per-record server round-trip.
 func observeRecordSize(rec *as.Result, element monconf, hs *histSet, expireTime float64) {
-	if !element.KByteHistogramEnabled && !element.SizeHistogramEnabled {
+	if !element.KByteHistogramEnabled && !element.SizeHistogramEnabled && hs.quantiles == nil {
 		return
 	}
 	// no-op "Operation"/"Expression" returning metadata only; should not incur IO
@@ -550,7 +552,7 @@ func updateStats(namespace string, set string, element monconf, hs *histSet) str
 	// measureRecordSize is needed by both the kib and size histograms; initialize
 	// its read-only (TTLDontUpdate) policy once when either is enabled so the
 	// metadata read never falls back to the client's default write policy.
-	if element.KByteHistogramEnabled || element.SizeHistogramEnabled {
+	if element.KByteHistogramEnabled || element.SizeHistogramEnabled || hs.quantiles != nil {
 		measureOps, opPolicy = initRecSizeVars()
 	}
 	counts := drainScan(recs, element, hs, &ttls)
