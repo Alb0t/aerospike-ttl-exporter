@@ -26,7 +26,7 @@ monitor:
     policyTotalTimeout: 20m
     policySocketTimeout: 20m
     recordsPerSecond: 100
-    kbyteHistogramEnabled: true
+    ttlBytesHistogramEnabled: true
     sizeHistogramEnabled: true
     ttlBuckets:
       mode: static
@@ -36,9 +36,13 @@ monitor:
       min: 1
       max: 8389000 # 8 MiB — max aerospike record size (7.0+)
       count: 10
-    # quantileTargets: exact quantile percentiles for TTL and size summaries.
-    # Defaults to [0.20, 0.50, 0.90, 0.99] if omitted.
+    # ttlCountsHistogramEnabled: true  # expiry_count_hist, TTL-by-counts (default: true)
+    # quantileTargets: blanket default for all quantile dimensions.
     # quantileTargets: [0.50, 0.90, 0.99]
+    # Per-dimension overrides (fall back to quantileTargets if omitted):
+    # ttlCountsQuantileTargets: [0.50, 0.90, 0.99]
+    # sizeQuantileTargets: [0.50, 0.99]
+    # ttlBytesQuantileTargets: []  # [] disables this dimension
 
   # A whole namespace (set: null) with evenly-spaced linear TTL buckets.
   - namespace: events

@@ -37,7 +37,7 @@ func TestComputeQuantilesEmpty(t *testing.T) {
 
 func TestQuantileCollectorDoubleBuffer(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	qc := newQuantileCollector("testns", "testset", "seconds", defaultQuantileTargets)
+	qc := newQuantileCollector("testns", "testset", "seconds", quantileDimTargets{ttl: defaultQuantileTargets, size: defaultQuantileTargets})
 	reg.MustRegister(qc)
 
 	// before any finalize, should emit nothing
@@ -68,7 +68,7 @@ func TestQuantileCollectorDoubleBuffer(t *testing.T) {
 }
 
 func TestFinalizeEmptyClearsLive(t *testing.T) {
-	qc := newQuantileCollector("ns", "set", "seconds", defaultQuantileTargets)
+	qc := newQuantileCollector("ns", "set", "seconds", quantileDimTargets{ttl: defaultQuantileTargets, size: defaultQuantileTargets})
 
 	for i := 1; i <= 50; i++ {
 		qc.observeTTL(float64(i))

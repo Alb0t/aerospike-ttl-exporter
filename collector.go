@@ -123,7 +123,7 @@ type serviceConf struct {
 }
 
 // bucketConfig is the unified histogram bucket specification shared by TTL
-// histograms (counts_hist/kib_hist) and the size histogram (size_bytes_hist).
+// histograms (expiry_count_hist/expiry_bytes_hist) and the size histogram (size_bytes_hist).
 // Mode selects the strategy; the other fields supply that strategy's inputs.
 // Min/Max/Start/Width are strings so TTL values can carry a d/h/s suffix
 // (parsed via parseTimeValues); for size buckets they are numeric strings
@@ -144,21 +144,25 @@ type bucketConfig struct {
 }
 
 type monconf struct {
-	Namespace             string       `yaml:"namespace"`
-	Set                   string       `yaml:"set"`
-	Recordcount           int          `yaml:"recordCount,omitempty"`
-	ScanPercent           float64      `yaml:"scanPercent,omitempty"`
-	ReportCount           int          `yaml:"reportCount,omitempty"`
-	ScanTotalTimeout      string       `yaml:"scanTotalTimeout"`
-	ScanSocketTimeout     string       `yaml:"scanSocketTimeout"`
-	PolicyTotalTimeout    string       `yaml:"policyTotalTimeout"`
-	PolicySocketTimeout   string       `yaml:"policySocketTimeout"`
-	RecordsPerSecond      int          `yaml:"recordsPerSecond"`
-	KByteHistogramEnabled bool         `yaml:"kbyteHistogramEnabled,omitempty"`
-	SizeHistogramEnabled  bool         `yaml:"sizeHistogramEnabled"`
-	TTLBuckets            bucketConfig `yaml:"ttlBuckets"`
-	SizeBuckets           bucketConfig `yaml:"sizeBuckets"`
-	QuantileTargets       []float64    `yaml:"quantileTargets,omitempty"`
+	Namespace                 string       `yaml:"namespace"`
+	Set                       string       `yaml:"set"`
+	Recordcount               int          `yaml:"recordCount,omitempty"`
+	ScanPercent               float64      `yaml:"scanPercent,omitempty"`
+	ReportCount               int          `yaml:"reportCount,omitempty"`
+	ScanTotalTimeout          string       `yaml:"scanTotalTimeout"`
+	ScanSocketTimeout         string       `yaml:"scanSocketTimeout"`
+	PolicyTotalTimeout        string       `yaml:"policyTotalTimeout"`
+	PolicySocketTimeout       string       `yaml:"policySocketTimeout"`
+	RecordsPerSecond          int          `yaml:"recordsPerSecond"`
+	TTLCountsHistogramEnabled *bool        `yaml:"ttlCountsHistogramEnabled,omitempty"`
+	TTLBytesHistogramEnabled  bool         `yaml:"ttlBytesHistogramEnabled,omitempty"`
+	SizeHistogramEnabled      bool         `yaml:"sizeHistogramEnabled"`
+	TTLBuckets                bucketConfig `yaml:"ttlBuckets"`
+	SizeBuckets               bucketConfig `yaml:"sizeBuckets"`
+	QuantileTargets           []float64    `yaml:"quantileTargets,omitempty"`
+	TTLCountsQuantileTargets  []float64    `yaml:"ttlCountsQuantileTargets,omitempty"`
+	SizeQuantileTargets       []float64    `yaml:"sizeQuantileTargets,omitempty"`
+	TTLBytesQuantileTargets   []float64    `yaml:"ttlBytesQuantileTargets,omitempty"`
 }
 
 // monconfOverride mirrors monconf but with pointer fields for every
@@ -167,21 +171,25 @@ type monconf struct {
 // override a discovered/default set's config field-by-field. Namespace and Set
 // are plain strings because they are the match key, not overridable values.
 type monconfOverride struct {
-	Namespace             string        `yaml:"namespace"`
-	Set                   string        `yaml:"set"`
-	Recordcount           *int          `yaml:"recordCount,omitempty"`
-	ScanPercent           *float64      `yaml:"scanPercent,omitempty"`
-	ReportCount           *int          `yaml:"reportCount,omitempty"`
-	ScanTotalTimeout      *string       `yaml:"scanTotalTimeout,omitempty"`
-	ScanSocketTimeout     *string       `yaml:"scanSocketTimeout,omitempty"`
-	PolicyTotalTimeout    *string       `yaml:"policyTotalTimeout,omitempty"`
-	PolicySocketTimeout   *string       `yaml:"policySocketTimeout,omitempty"`
-	RecordsPerSecond      *int          `yaml:"recordsPerSecond,omitempty"`
-	KByteHistogramEnabled *bool         `yaml:"kbyteHistogramEnabled,omitempty"`
-	SizeHistogramEnabled  *bool         `yaml:"sizeHistogramEnabled,omitempty"`
-	TTLBuckets            *bucketConfig `yaml:"ttlBuckets,omitempty"`
-	SizeBuckets           *bucketConfig `yaml:"sizeBuckets,omitempty"`
-	QuantileTargets       *[]float64    `yaml:"quantileTargets,omitempty"`
+	Namespace                 string        `yaml:"namespace"`
+	Set                       string        `yaml:"set"`
+	Recordcount               *int          `yaml:"recordCount,omitempty"`
+	ScanPercent               *float64      `yaml:"scanPercent,omitempty"`
+	ReportCount               *int          `yaml:"reportCount,omitempty"`
+	ScanTotalTimeout          *string       `yaml:"scanTotalTimeout,omitempty"`
+	ScanSocketTimeout         *string       `yaml:"scanSocketTimeout,omitempty"`
+	PolicyTotalTimeout        *string       `yaml:"policyTotalTimeout,omitempty"`
+	PolicySocketTimeout       *string       `yaml:"policySocketTimeout,omitempty"`
+	RecordsPerSecond          *int          `yaml:"recordsPerSecond,omitempty"`
+	TTLCountsHistogramEnabled *bool         `yaml:"ttlCountsHistogramEnabled,omitempty"`
+	TTLBytesHistogramEnabled  *bool         `yaml:"ttlBytesHistogramEnabled,omitempty"`
+	SizeHistogramEnabled      *bool         `yaml:"sizeHistogramEnabled,omitempty"`
+	TTLBuckets                *bucketConfig `yaml:"ttlBuckets,omitempty"`
+	SizeBuckets               *bucketConfig `yaml:"sizeBuckets,omitempty"`
+	QuantileTargets           *[]float64    `yaml:"quantileTargets,omitempty"`
+	TTLCountsQuantileTargets  *[]float64    `yaml:"ttlCountsQuantileTargets,omitempty"`
+	SizeQuantileTargets       *[]float64    `yaml:"sizeQuantileTargets,omitempty"`
+	TTLBytesQuantileTargets   *[]float64    `yaml:"ttlBytesQuantileTargets,omitempty"`
 }
 
 // resolve produces a concrete monconf by starting from base and overwriting only
@@ -200,13 +208,19 @@ func (o monconfOverride) resolve(base monconf) monconf {
 	setIfPresent(&m.PolicyTotalTimeout, o.PolicyTotalTimeout)
 	setIfPresent(&m.PolicySocketTimeout, o.PolicySocketTimeout)
 	setIfPresent(&m.RecordsPerSecond, o.RecordsPerSecond)
-	setIfPresent(&m.KByteHistogramEnabled, o.KByteHistogramEnabled)
+	if o.TTLCountsHistogramEnabled != nil {
+		m.TTLCountsHistogramEnabled = o.TTLCountsHistogramEnabled
+	}
+	setIfPresent(&m.TTLBytesHistogramEnabled, o.TTLBytesHistogramEnabled)
 	setIfPresent(&m.SizeHistogramEnabled, o.SizeHistogramEnabled)
 	// Bucket configs replace wholesale (no field-by-field merge within a block):
 	// a non-nil override block entirely supplants the default.
 	setIfPresent(&m.TTLBuckets, o.TTLBuckets)
 	setIfPresent(&m.SizeBuckets, o.SizeBuckets)
 	setIfPresent(&m.QuantileTargets, o.QuantileTargets)
+	setIfPresent(&m.TTLCountsQuantileTargets, o.TTLCountsQuantileTargets)
+	setIfPresent(&m.SizeQuantileTargets, o.SizeQuantileTargets)
+	setIfPresent(&m.TTLBytesQuantileTargets, o.TTLBytesQuantileTargets)
 	return m
 }
 
@@ -224,9 +238,10 @@ func (c *conf) setConf() {
 	if err != nil {
 		log.Fatal("Failed to read configfile: ", *configFile)
 	}
-	err = yaml.Unmarshal(yamlFile, c) // This actually writes it back to *conf
-	if err != nil {
-		log.Fatal("Failed to unmarshal configfile, bad format? File:", *configFile)
+	dec := yaml.NewDecoder(strings.NewReader(string(yamlFile)))
+	dec.KnownFields(true)
+	if err := dec.Decode(c); err != nil {
+		log.Fatalf("Failed to unmarshal configfile %s: %v (if you see an unknown field, check the Migration section in README.md — countsHistogramEnabled→ttlCountsHistogramEnabled, kbyteHistogramEnabled→ttlBytesHistogramEnabled)", *configFile, err)
 	}
 	c.validate()
 }
@@ -249,6 +264,9 @@ func (c *conf) validate() {
 		c.Service.DiscoveryDefaults.Recordcount = -1
 	}
 	validateQuantileTargets(c.Service.DiscoveryDefaults.QuantileTargets)
+	validateQuantileTargets(c.Service.DiscoveryDefaults.TTLCountsQuantileTargets)
+	validateQuantileTargets(c.Service.DiscoveryDefaults.SizeQuantileTargets)
+	validateQuantileTargets(c.Service.DiscoveryDefaults.TTLBytesQuantileTargets)
 	c.Service.DiscoveryDefaults.TTLBuckets.validate("ttl")
 	c.Service.DiscoveryDefaults.SizeBuckets.validate("size")
 	c.Service.DiscoveryDefaults.validateSizeHistBuckets()
@@ -262,6 +280,15 @@ func (c *conf) validate() {
 		c.Monitor[i].validateSizeHistBuckets(c.Service.DiscoveryDefaults)
 		if c.Monitor[i].QuantileTargets != nil {
 			validateQuantileTargets(*c.Monitor[i].QuantileTargets)
+		}
+		if c.Monitor[i].TTLCountsQuantileTargets != nil {
+			validateQuantileTargets(*c.Monitor[i].TTLCountsQuantileTargets)
+		}
+		if c.Monitor[i].SizeQuantileTargets != nil {
+			validateQuantileTargets(*c.Monitor[i].SizeQuantileTargets)
+		}
+		if c.Monitor[i].TTLBytesQuantileTargets != nil {
+			validateQuantileTargets(*c.Monitor[i].TTLBytesQuantileTargets)
 		}
 	}
 	if !c.Service.AutoDiscover {
@@ -353,6 +380,14 @@ func (o monconfOverride) validateSizeHistBuckets(defaults monconf) {
 		log.Fatalf("monitor entry %s:%s enables sizeHistogramEnabled but has no sizeBuckets mode (need static|linear|exponential)",
 			o.Namespace, o.Set)
 	}
+}
+
+// ttlCountsHistEnabled resolves the tri-state *bool: nil (unset) → true (default on).
+func ttlCountsHistEnabled(p *bool) bool {
+	if p == nil {
+		return true
+	}
+	return *p
 }
 
 func validateQuantileTargets(targets []float64) {

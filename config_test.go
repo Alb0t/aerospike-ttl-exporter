@@ -25,7 +25,9 @@ func TestExampleConfigsValid(t *testing.T) {
 		if rerr != nil {
 			os.Exit(1)
 		}
-		if yaml.Unmarshal(raw, &c) != nil {
+		dec := yaml.NewDecoder(strings.NewReader(string(raw)))
+		dec.KnownFields(true)
+		if dec.Decode(&c) != nil {
 			os.Exit(1)
 		}
 		c.validate() // fatals (os.Exit) on invalid config
@@ -306,4 +308,46 @@ func TestValidatePassesSizeHistDisabled(t *testing.T) {
 	c.Service.AutoDiscover = true
 	c.Service.DiscoveryBucketCount = 10
 	c.validate()
+}
+
+func TestStrictDecodeRejectsStaleKeys(t *testing.T) {
+	raw := `
+service:
+  listenPort: ":9634"
+  frequencySecs: 1
+monitor:
+  - namespace: ns1
+    set: s1
+    kbyteHistogramEnabled: true
+    ttlBuckets:
+      mode: static
+      static: [1d]
+`
+	var c conf
+	dec := yaml.NewDecoder(strings.NewReader(raw))
+	dec.KnownFields(true)
+	if err := dec.Decode(&c); err == nil {
+		t.Fatal("expected error for stale key kbyteHistogramEnabled, got nil")
+	}
+}
+
+func TestStrictDecodeRejectsCountsHistogramEnabled(t *testing.T) {
+	raw := `
+service:
+  listenPort: ":9634"
+  frequencySecs: 1
+monitor:
+  - namespace: ns1
+    set: s1
+    countsHistogramEnabled: true
+    ttlBuckets:
+      mode: static
+      static: [1d]
+`
+	var c conf
+	dec := yaml.NewDecoder(strings.NewReader(raw))
+	dec.KnownFields(true)
+	if err := dec.Decode(&c); err == nil {
+		t.Fatal("expected error for stale key countsHistogramEnabled, got nil")
+	}
 }

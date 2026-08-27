@@ -27,7 +27,7 @@ service:
     policyTotalTimeout: 20m
     policySocketTimeout: 20m
     recordsPerSecond: 100
-    kbyteHistogramEnabled: true
+    ttlBytesHistogramEnabled: true
     sizeHistogramEnabled: true
     ttlBuckets:
       mode: auto
@@ -37,7 +37,12 @@ service:
       min: 1
       max: 8389000
       count: 10
-    # quantileTargets: [0.20, 0.50, 0.90, 0.99]  # default; override per set below
+    # ttlCountsHistogramEnabled: true  # expiry_count_hist, TTL-by-counts (default: true)
+    # quantileTargets: [0.20, 0.50, 0.90, 0.99]  # blanket default; override per set below
+    # Per-dimension overrides (fall back to quantileTargets if omitted):
+    # ttlCountsQuantileTargets: [0.20, 0.50, 0.90, 0.99]
+    # sizeQuantileTargets: [0.20, 0.50, 0.90, 0.99]
+    # ttlBytesQuantileTargets: [0.20, 0.50, 0.90, 0.99]
 
 monitor:
   # metrics:timeseries is heavily skewed — most records expire soon with a long
@@ -52,11 +57,13 @@ monitor:
 
   # audit:log has a fixed contractual retention — pin explicit static buckets
   # instead of auto-fitting, and skip the size histogram for this set.
-  # audit:log — override quantile targets to only track p50/p99
+  # audit:log — override quantile targets per dimension; disable size quantiles
   - namespace: audit
     set: log
     sizeHistogramEnabled: false
-    quantileTargets: [0.50, 0.99]
+    ttlCountsQuantileTargets: [0.50, 0.99]
+    sizeQuantileTargets: []          # disable size quantiles for this set
+    ttlBytesQuantileTargets: [0.50, 0.99]
     ttlBuckets:
       mode: static
       static: [30d, 90d, 180d, 270d, 365d]

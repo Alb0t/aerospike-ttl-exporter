@@ -21,32 +21,38 @@ A custom exporter that samples records on each server on a schedule and exports 
 ### How large are the records in the fresh TTL range?
 ```promql
 # Scenario: default-ttl=33d
-histogram_quantile(0.50, sum(rate(aerospike_ttl_kib_hist_bucket{namespace="myns"}[$__rate_interval])) by (le))
+histogram_quantile(0.50, sum(rate(aerospike_ttl_expiry_bytes_hist_bucket{namespace="myns"}[$__rate_interval])) by (le))
 # Query result: 28.6
 # Interpreted: 50% of the data has been written in the last (33-28.6) 4.4 days
+
+# Exact equivalent (per set, no bucket interpolation):
+aerospike_ttl_expiry_bytes_quantiles{namespace="myns",set="myset",quantile="0.5"}
 ```
 
 ### How many records are in the fresh TTL range?
 ```promql
 # Scenario: default-ttl=33d
-histogram_quantile(0.50, sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns"}[$__rate_interval])) by (le))
+histogram_quantile(0.50, sum(rate(aerospike_ttl_expiry_count_hist_bucket{namespace="myns"}[$__rate_interval])) by (le))
 # Query result: 22.1
 # Interpreted: 50% of the data has been written in the last (33-22.1) 10.9 days
+
+# Exact equivalent (per set):
+aerospike_ttl_expiry_count_quantiles{namespace="myns",set="myset",quantile="0.5"}
 ```
 
 ### What percentage of records will expire in a week?
 ```promql
-sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns",le="7",ttlUnit="days"}[$__rate_interval]))*100
+sum(rate(aerospike_ttl_expiry_count_hist_bucket{namespace="myns",le="7",ttlUnit="days"}[$__rate_interval]))*100
 /
-sum(rate(aerospike_ttl_counts_hist_bucket{namespace="myns",le="+Inf"}[$__rate_interval]))
+sum(rate(aerospike_ttl_expiry_count_hist_bucket{namespace="myns",le="+Inf"}[$__rate_interval]))
 # Result: 13.1
 ```
 
 ### What percentage of data (by size) will expire in a week?
 ```promql
-sum(rate(aerospike_ttl_kib_hist_bucket{namespace="myns",le="7",ttlUnit="days"}[$__rate_interval]))*100
+sum(rate(aerospike_ttl_expiry_bytes_hist_bucket{namespace="myns",le="7",ttlUnit="days"}[$__rate_interval]))*100
 /
-sum(rate(aerospike_ttl_kib_hist_bucket{namespace="myns",le="+Inf"}[$__rate_interval]))
+sum(rate(aerospike_ttl_expiry_bytes_hist_bucket{namespace="myns",le="+Inf"}[$__rate_interval]))
 # Result: 1.4
 ```
 
@@ -67,38 +73,61 @@ Useful when you're already evicting and need to forecast changes like:
 - You will reduce your HWM by 10% (e.g. 50% to 45%)
 
 ```promql
+# Exact: the TTL below which the earliest-expiring 10% of your BYTES sit.
+# Evicting 10% of data by size moves the evict-void-time to (roughly) this TTL.
+aerospike_ttl_expiry_bytes_quantiles{namespace="myns",set="myset",quantile="0.1"}
+# Result: 26.2
+
+# Histogram (interpolated, aggregatable across sets):
 histogram_quantile(0.10,
     sum(
         rate(
-            aerospike_ttl_kib_hist_bucket{namespace="myns"}
+            aerospike_ttl_expiry_bytes_hist_bucket{namespace="myns"}
             [$__rate_interval]
         )
     ) by (le)
 )
-# Result: 26.2
 ```
+
+### Quantiles vs histograms: which to query?
+
+Same three distributions are exported both ways. Quantile summaries are **exact**
+(computed from the full scan dataset, no bucket interpolation) but only at the
+configured targets and only per set. Histograms are interpolated but let you pick
+any quantile at query time, aggregate across sets/nodes with `sum by (le)`, and
+compute "% below X" style ratios. Use quantiles for precise per-set answers,
+histograms for fleet rollups and arbitrary cut-points.
 
 ## Metrics reference
 
 All metrics are in the `aerospike_ttl_` namespace.
 
+Each per-set distribution comes in two flavors sharing one naming scheme —
+`expiry_count_*` (TTL by record count), `expiry_bytes_*` (TTL weighted by record
+bytes), `size_bytes_*` (record size):
+
 ### Per-set histograms
 
 | Metric | Labels | Description |
 |--------|--------|-------------|
-| `counts_hist` | `namespace`, `set`, `ttlUnit` | Records per TTL bucket. |
-| `kib_hist` | `namespace`, `set`, `ttlUnit`, `storage_type` | KiB per TTL bucket, size-weighted (`storage_type=recordsize`). Requires `kbyteHistogramEnabled: true`. |
-| `size_bytes_hist` | `namespace`, `set`, `metadata_op` | Record size distribution in raw bytes (`metadata_op=recordsize`). Requires `sizeHistogramEnabled: true`. Uses `sizeBuckets` config. |
+| `expiry_count_hist` | `namespace`, `set`, `ttlUnit` | Records per TTL bucket. Disable with `ttlCountsHistogramEnabled: false`. |
+| `expiry_bytes_hist` | `namespace`, `set`, `ttlUnit` | Bytes per TTL bucket, size-weighted. Requires `ttlBytesHistogramEnabled: true`. |
+| `size_bytes_hist` | `namespace`, `set` | Record size distribution in raw bytes. Requires `sizeHistogramEnabled: true`. Uses `sizeBuckets` config. |
 
 ### Per-set quantile summaries
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `ttl_quantiles` | Summary | `namespace`, `set`, `ttlUnit`, `quantile` | Exact quantile summary of record TTLs from the most recent complete scan (in display units). |
-| `size_bytes_quantiles` | Summary | `namespace`, `set`, `quantile` | Exact quantile summary of record sizes (bytes) from the most recent complete scan. |
+| `expiry_count_quantiles` | Summary | `namespace`, `set`, `ttlUnit`, `quantile` | Exact quantile summary of record TTLs from the most recent complete scan (in display units). Configure with `ttlCountsQuantileTargets`. |
+| `expiry_bytes_quantiles` | Summary | `namespace`, `set`, `ttlUnit`, `quantile` | Exact quantile summary of record TTLs weighted by record size (bytes). Configure with `ttlBytesQuantileTargets`. |
+| `size_bytes_quantiles` | Summary | `namespace`, `set`, `quantile` | Exact quantile summary of record sizes (bytes) from the most recent complete scan. Configure with `sizeQuantileTargets`. |
 | `quantile_last_refresh_success_ts` | Gauge | `namespace`, `set` | Unix epoch when quantile summaries were last successfully computed. Use to detect stale data. |
 
-Quantile summaries are computed from the full scan dataset — not streaming estimates — so they are exact for the sampled records. They are **double-buffered**: partial or failed scans never export; the prior successful run's values persist until the next run completes. By default p20/p50/p90/p99 are emitted; configure with `quantileTargets` (see below). Set `quantileTargets: []` to disable.
+**`expiry_count_*` vs `expiry_bytes_*`:** same TTL distribution, different weighting. `expiry_count_quantiles{quantile="0.5"}` is the TTL below which half the **records** sit; `expiry_bytes_quantiles{quantile="0.5"}` is the TTL below which half the **bytes** sit. They diverge whenever record size correlates with age — e.g. if large records are rewritten (re-TTL'd) more often, the byte-weighted p50 sits higher than the count-weighted p50. Use count for "how many records expire", bytes for capacity questions ("how much space frees up", evict-void-time forecasting).
+
+Quantile summaries are computed from the full scan dataset — not streaming estimates — so they are exact for the sampled records. They are **double-buffered**: partial or failed scans never export; the prior successful run's values persist until the next run completes. By default p20/p50/p90/p99 are emitted for all three dimensions.
+
+Each dimension can be configured independently via `ttlCountsQuantileTargets`, `sizeQuantileTargets`, and `ttlBytesQuantileTargets`. The blanket `quantileTargets` sets the default for any dimension without its own list. Set a per-dimension list to `[]` to disable that dimension, or `quantileTargets: []` to disable all three at once.
 
 ### Per-set gauges
 
@@ -119,36 +148,42 @@ Quantile summaries are computed from the full scan dataset — not streaming est
 
 | Metric | Labels | Description |
 |--------|--------|-------------|
-| `build_info` | `version` | Always `1`. The `version` label carries the release tag (or `dev`). |
+| `build_info` | `version`, `commit` | Always `1`. `version` carries the release tag (or `dev`); `commit` carries the short git commit (or `unknown`). |
 
 ### Example output
 
 ```
-aerospike_ttl_build_info{version="dev"} 1
+aerospike_ttl_build_info{commit="unknown",version="dev"} 1
 aerospike_ttl_default_ttl_seconds{namespace="test"} 0
 aerospike_ttl_min_ttl_seconds{namespace="test",set="myset"} 86374
 aerospike_ttl_max_ttl_seconds{namespace="test",set="myset"} 86374
-aerospike_ttl_counts_hist_bucket{namespace="test",set="myset",ttlUnit="hours",le="23.76"} 0
-aerospike_ttl_counts_hist_bucket{namespace="test",set="myset",ttlUnit="hours",le="24.384"} 200
-aerospike_ttl_counts_hist_bucket{namespace="test",set="myset",ttlUnit="hours",le="+Inf"} 200
-aerospike_ttl_counts_hist_sum{namespace="test",set="myset",ttlUnit="hours"} 4799.083333333327
-aerospike_ttl_counts_hist_count{namespace="test",set="myset",ttlUnit="hours"} 200
-aerospike_ttl_kib_hist_bucket{namespace="test",set="myset",storage_type="recordsize",ttlUnit="hours",le="23.76"} 0
-aerospike_ttl_kib_hist_bucket{namespace="test",set="myset",storage_type="recordsize",ttlUnit="hours",le="24.384"} 16
-aerospike_ttl_kib_hist_bucket{namespace="test",set="myset",storage_type="recordsize",ttlUnit="hours",le="+Inf"} 16
-aerospike_ttl_kib_hist_sum{namespace="test",set="myset",storage_type="recordsize",ttlUnit="hours"} 382.4269531249998
-aerospike_ttl_kib_hist_count{namespace="test",set="myset",storage_type="recordsize",ttlUnit="hours"} 16
-aerospike_ttl_size_bytes_hist_bucket{metadata_op="recordsize",namespace="test",set="myset",le="34.56227054460177"} 0
-aerospike_ttl_size_bytes_hist_bucket{metadata_op="recordsize",namespace="test",set="myset",le="203.19049958682461"} 200
-aerospike_ttl_size_bytes_hist_bucket{metadata_op="recordsize",namespace="test",set="myset",le="+Inf"} 200
-aerospike_ttl_size_bytes_hist_sum{metadata_op="recordsize",namespace="test",set="myset"} 16320
-aerospike_ttl_size_bytes_hist_count{metadata_op="recordsize",namespace="test",set="myset"} 200
-aerospike_ttl_ttl_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.2"} 23.99
-aerospike_ttl_ttl_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.5"} 23.997
-aerospike_ttl_ttl_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.9"} 23.997
-aerospike_ttl_ttl_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.99"} 23.997
-aerospike_ttl_ttl_quantiles_sum{namespace="test",set="myset",ttlUnit="hours"} 4799.08
-aerospike_ttl_ttl_quantiles_count{namespace="test",set="myset",ttlUnit="hours"} 200
+aerospike_ttl_expiry_count_hist_bucket{namespace="test",set="myset",ttlUnit="hours",le="23.76"} 0
+aerospike_ttl_expiry_count_hist_bucket{namespace="test",set="myset",ttlUnit="hours",le="24.384"} 200
+aerospike_ttl_expiry_count_hist_bucket{namespace="test",set="myset",ttlUnit="hours",le="+Inf"} 200
+aerospike_ttl_expiry_count_hist_sum{namespace="test",set="myset",ttlUnit="hours"} 4799.083333333327
+aerospike_ttl_expiry_count_hist_count{namespace="test",set="myset",ttlUnit="hours"} 200
+aerospike_ttl_expiry_bytes_hist_bucket{namespace="test",set="myset",ttlUnit="hours",le="23.76"} 0
+aerospike_ttl_expiry_bytes_hist_bucket{namespace="test",set="myset",ttlUnit="hours",le="24.384"} 16320
+aerospike_ttl_expiry_bytes_hist_bucket{namespace="test",set="myset",ttlUnit="hours",le="+Inf"} 16320
+aerospike_ttl_expiry_bytes_hist_sum{namespace="test",set="myset",ttlUnit="hours"} 391605.2
+aerospike_ttl_expiry_bytes_hist_count{namespace="test",set="myset",ttlUnit="hours"} 16320
+aerospike_ttl_size_bytes_hist_bucket{namespace="test",set="myset",le="34.56227054460177"} 0
+aerospike_ttl_size_bytes_hist_bucket{namespace="test",set="myset",le="203.19049958682461"} 200
+aerospike_ttl_size_bytes_hist_bucket{namespace="test",set="myset",le="+Inf"} 200
+aerospike_ttl_size_bytes_hist_sum{namespace="test",set="myset"} 16320
+aerospike_ttl_size_bytes_hist_count{namespace="test",set="myset"} 200
+aerospike_ttl_expiry_count_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.2"} 23.99
+aerospike_ttl_expiry_count_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.5"} 23.997
+aerospike_ttl_expiry_count_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.9"} 23.997
+aerospike_ttl_expiry_count_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.99"} 23.997
+aerospike_ttl_expiry_count_quantiles_sum{namespace="test",set="myset",ttlUnit="hours"} 4799.08
+aerospike_ttl_expiry_count_quantiles_count{namespace="test",set="myset",ttlUnit="hours"} 200
+aerospike_ttl_expiry_bytes_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.2"} 23.99
+aerospike_ttl_expiry_bytes_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.5"} 23.997
+aerospike_ttl_expiry_bytes_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.9"} 23.997
+aerospike_ttl_expiry_bytes_quantiles{namespace="test",set="myset",ttlUnit="hours",quantile="0.99"} 23.997
+aerospike_ttl_expiry_bytes_quantiles_sum{namespace="test",set="myset",ttlUnit="hours"} 16320
+aerospike_ttl_expiry_bytes_quantiles_count{namespace="test",set="myset",ttlUnit="hours"} 200
 aerospike_ttl_size_bytes_quantiles{namespace="test",set="myset",quantile="0.2"} 81
 aerospike_ttl_size_bytes_quantiles{namespace="test",set="myset",quantile="0.5"} 81
 aerospike_ttl_size_bytes_quantiles{namespace="test",set="myset",quantile="0.9"} 82
@@ -177,7 +212,7 @@ Usage of ./aerospike-ttl-exporter:
    `conf.yaml` is the fully-commented reference for every field.
 3. Run the binary: `./aerospike-ttl-exporter -configFile /path/to/conf.yaml`
 
-The config file is YAML. There are **no default values** — any omitted or misspelled key gets Go's zero value for that type (e.g. `0` for `int`, `""` for `string`). Don't omit fields or misspell them.
+The config file is YAML and parsed **strictly**: an unknown or misspelled key is a fatal startup error (this catches configs still using pre-rename keys — see Migration below). With few exceptions there are **no default values** — an omitted key gets Go's zero value for that type (e.g. `0` for `int`, `""` for `string`). Don't omit fields. The exceptions: `ttlCountsHistogramEnabled` defaults to `true`, quantile targets default to `[0.20, 0.50, 0.90, 0.99]`, `discoveryIntervalSecs` falls back to `frequencySecs`, and in discovery mode an unset `recordCount` in `discoveryDefaults` is coerced to `-1` (no cap).
 
 ## Operating modes
 
@@ -194,25 +229,25 @@ The exporter asks Aerospike which namespaces and sets exist, reads each set's TT
 1. Enumerates namespaces (`namespaces` info command) and the sets in each (`sets/<ns>`).
 2. For each namespace, checks for set-less records (the "null set") by comparing namespace total objects to the sum of per-set objects. If set-less records exist, a synthetic null-set entry is added (scanned with a server-side filter to count only set-less records).
 3. Reads each namespace's `default-ttl` and each set's TTL histogram (`histogram:namespace=<ns>;set=<set>;type=ttl`).
-4. Fits histogram buckets to the observed min/max populated TTL. `discoveryBucketCount` sets the number of bins; `n+1` edges span `[minTTL, maxTTL]` inclusive so the densest top TTLs land in a real bucket, not `+Inf`. Spacing is **linear** by default; set `ttlBuckets.scale: exponential` (auto mode only) for geometric spacing when TTLs are heavily skewed.
+4. Fits histogram buckets to the observed min/max populated TTL (buckets holding less than `discoveryOutlierPct` percent of the set's records are ignored as outlier noise). `discoveryBucketCount` sets the number of bins; `n+1` edges span `[minTTL, maxTTL]` inclusive so the densest top TTLs land in a real bucket, not `+Inf`. Spacing is **linear** by default; set `ttlBuckets.scale: exponential` (auto mode only) for geometric spacing when TTLs are heavily skewed.
 5. `discoveryRangePaddingPct` extends each fitted top edge by that percentage. Aerospike's TTL histogram rescales dynamically, so between discovery passes the live max TTL can drift above the observed max and spill into `+Inf`; padding leaves headroom. Pair with a short `discoveryIntervalSecs` to re-fit before drift grows large.
 6. Picks the display unit from the magnitude of the observed max TTL: `>2d → days`, `>2h → hours`, else `seconds`, then **quantizes** the fitted range to whole display units. Sub-unit drift between passes leaves the edges byte-identical, so the collector signature is unchanged and no resetting rebuild happens.
 
 **Scheduling:** Discovery runs on its own interval (`discoveryIntervalSecs`, defaults to `frequencySecs`) independent of the scan cadence. It runs once synchronously at startup so metrics are populated before the first scan, then periodically. Only unregisters/re-registers collectors when the computed bucket signature actually changes — no churn when the distribution is stable.
 
-**Resilience:** Each info command retries with exponential backoff (500ms → 4s) for up to 30 seconds. If any call fails after the retry window, the entire discovery pass is skipped and the previous registry is kept — a transient blip won't prune healthy sets.
+**Resilience:** Each info command retries with exponential backoff (500ms → 4s) for up to 30 seconds. If any call fails after the retry window, the entire discovery pass is skipped and the previous registry is kept — a transient blip won't prune healthy sets. Exception: the object-count reads behind the null-set check don't retry; if one fails, only the null set is skipped for that pass (re-evaluated next pass).
 
 **Pruning:** Sets that no longer exist on the Aerospike node are dropped from the registry, and their gauge series (`min_ttl_seconds`, `max_ttl_seconds`, `scan_time_seconds`, `scan_last_updated`) are deleted. The per-namespace `default_ttl_seconds` gauge is deleted once no sets survive in that namespace.
 
 **Overrides:** `monitor:` entries whose `namespace` + `set` match a discovered set override the discovered/default config **field-by-field**. Only fields explicitly set in the entry replace the default; everything else stays discovered. Bucket config blocks (`ttlBuckets`, `sizeBuckets`) replace wholesale when overridden (no field-by-field merge within a block).
 
-**Never-expire sets:** A set with `default-ttl=0` and an empty TTL histogram is treated as non-expirable — its TTL histograms (`counts_hist`, `kib_hist`) are skipped, but `size_bytes_hist` is still registered if enabled.
+**Never-expire sets:** A set with `default-ttl=0` and an empty TTL histogram is treated as non-expirable — its TTL histograms (`expiry_count_hist`, `expiry_bytes_hist`) are skipped, but `size_bytes_hist` is still registered if enabled. Note: to track the *count* of never-expiring records, Aerospike's own exporter already provides `aerospike_namespace_non_expirable_objects` — this exporter doesn't duplicate it.
 
 When `autoDiscover` is `false` the exporter behaves exactly as before and only scans the explicit `monitor:` entries.
 
 ## Bucket configuration
 
-TTL histograms (`counts_hist`, `kib_hist`) and the size histogram (`size_bytes_hist`) share one unified bucket schema. Each set (or `discoveryDefaults`, or a `monitor:` override) carries up to two blocks:
+TTL histograms (`expiry_count_hist`, `expiry_bytes_hist`) and the size histogram (`size_bytes_hist`) share one unified bucket schema. Each set (or `discoveryDefaults`, or a `monitor:` override) carries up to two blocks:
 
 - `ttlBuckets` — boundaries for the TTL histograms. Values may carry an `s`/`h`/`d` suffix; the suffix sets the `ttlUnit` label and the seconds divisor.
 - `sizeBuckets` — boundaries for the record-size histogram, in raw bytes.
@@ -257,7 +292,7 @@ Config is validated on load. Fatal startup errors for:
 - `mode: exponential` with `min <= 0`, `max <= min`, or `count <= 0`
 - `sizeHistogramEnabled: true` without a `sizeBuckets` mode
 - `autoDiscover: false` with any `monitor:` entry missing an explicit `ttlBuckets` mode (or using `auto`/empty)
-- `quantileTargets` with values outside `(0, 1)`
+- `quantileTargets`, `ttlCountsQuantileTargets`, `sizeQuantileTargets`, or `ttlBytesQuantileTargets` with values outside `(0, 1)`
 
 ## Configuration reference
 
@@ -271,7 +306,6 @@ See `conf.yaml` for a fully commented example, or the ready-to-edit configs in [
 | `aerospikeAddr` | string | Aerospike host to connect to. |
 | `aerospikePort` | int | Aerospike port. |
 | `skipNodeCheck` | bool | Skip local-node verification. **Dangerous in production** — disables the guard ensuring scans only hit the co-located node. |
-| `failOnClusterChange` | bool | (Reserved.) |
 | `frequencySecs` | int | Seconds between scan cycles. Scans do not overlap; if a cycle is still running when the next fires, it is skipped. |
 | `verbose` | bool | Enable debug-level logging. |
 | `username` | string | Aerospike username (omit if auth not enabled). |
@@ -280,6 +314,7 @@ See `conf.yaml` for a fully commented example, or the ready-to-edit configs in [
 | `discoveryIntervalSecs` | int | Seconds between discovery/re-fit passes. Defaults to `frequencySecs` if unset or `<= 0`. |
 | `discoveryBucketCount` | int | Number of linear TTL bins per discovered set. |
 | `discoveryRangePaddingPct` | int | Percentage to extend each fitted range's top edge for headroom. `0` = none. |
+| `discoveryOutlierPct` | float | Minimum percentage of a set's total records a live-histogram bucket must hold to count as populated when fitting the TTL range. Buckets below the threshold are treated as outlier noise and excluded from the min/max fit, so a handful of stray records can't blow out the bucket resolution. `0` = no filtering. |
 | `discoveryDefaults` | monconf | Base scan/perf/feature settings applied to every discovered set (same shape as a `monitor:` entry, minus `namespace`/`set`). |
 
 ### `monitor:` entries
@@ -298,11 +333,15 @@ Each entry targets one namespace/set. In auto-discovery mode they act as per-set
 | `policyTotalTimeout` | string | Policy total timeout (for metadata reads). |
 | `policySocketTimeout` | string | Policy socket timeout. |
 | `recordsPerSecond` | int | Server-side RPS throttle. `0` = unlimited. |
-| `kbyteHistogramEnabled` | bool | Enable `kib_hist` (size-weighted TTL histogram). Bucket counts represent total KiB per TTL bucket, O(1) per record. |
+| `ttlCountsHistogramEnabled` | bool | Enable `expiry_count_hist` (TTL-by-counts histogram). Default: `true`. Set to `false` to disable. |
+| `ttlBytesHistogramEnabled` | bool | Enable `expiry_bytes_hist` (size-weighted TTL histogram). Bucket counts represent total bytes per TTL bucket, O(1) per record. |
 | `sizeHistogramEnabled` | bool | Enable `size_bytes_hist` (record-size distribution). |
 | `ttlBuckets` | bucketConfig | TTL histogram bucket config (see Bucket configuration). |
 | `sizeBuckets` | bucketConfig | Size histogram bucket config (see Bucket configuration). |
-| `quantileTargets` | []float64 | Quantile percentiles to compute for TTL and size summaries. Values in `(0, 1)`. Default: `[0.20, 0.50, 0.90, 0.99]`. Set to `[]` to disable quantile summaries entirely. |
+| `quantileTargets` | []float64 | Blanket quantile targets applied to all three quantile dimensions unless overridden per-dimension. Values in `(0, 1)`. Default: `[0.20, 0.50, 0.90, 0.99]`. Set to `[]` to disable all quantile summaries. |
+| `ttlCountsQuantileTargets` | []float64 | Quantile targets for TTL-by-counts summaries. Overrides `quantileTargets` for this dimension. Set to `[]` to disable. |
+| `sizeQuantileTargets` | []float64 | Quantile targets for record-size summaries. Overrides `quantileTargets` for this dimension. Set to `[]` to disable. |
+| `ttlBytesQuantileTargets` | []float64 | Quantile targets for TTL-weighted-by-bytes summaries. Overrides `quantileTargets` for this dimension. Set to `[]` to disable. |
 
 ## Debug logging
 
@@ -319,9 +358,9 @@ level=info msg="Scan complete." namespace=myns set=myset total(records exported)
 
 The exporter only **scans** Aerospike — it never writes. Record size is read with a metadata-only `Operate` that carries `TTLDontUpdate`, so even the touched record's TTL/generation is left alone.
 
-`scripts/gen-stability-test.sh` is the end-to-end proof. It is **hermetic**: spins up an ephemeral enterprise-edition Aerospike in Docker (single-node, no license needed), seeds 10 canary records with a positive TTL, runs the real exporter binary with all histogram types enabled (`counts_hist`, `kib_hist`, `size_bytes_hist`), then:
+`scripts/gen-stability-test.sh` is the end-to-end proof. It is **hermetic**: spins up an ephemeral enterprise-edition Aerospike in Docker (single-node, no license needed), seeds 10 canary records with a positive TTL, runs the real exporter binary with all histogram types enabled (`expiry_count_hist`, `expiry_bytes_hist`, `size_bytes_hist`), then:
 
-1. Scrapes `/metrics` and asserts every histogram has `>= 10` observations — the exporter must actually produce histograms for the gen check to be meaningful.
+1. Scrapes `/metrics` and asserts every histogram has `>= 10` observations (for `expiry_bytes_hist`, whose `_count` is total bytes, 10 canaries trivially clear this) — the exporter must actually produce histograms for the gen check to be meaningful.
 2. Re-reads `gen` for all 10 canaries. Any change = exporter wrote (FAIL).
 3. Runs a negative control: deliberately writes a canary and confirms the gen comparison detects it, proving the harness can't false-pass.
 
@@ -343,6 +382,33 @@ just run-remote <hostname>    # run locally against a remote Aerospike node
 ```
 
 Set `AS_USER`/`AS_PASS` env vars to override Aerospike credentials for `deploy` and `run-remote`.
+
+## Migration (breaking rename)
+
+One release unified all per-set distribution names into `<dimension>_<kind>`
+(`expiry_count_*`, `expiry_bytes_*`, `size_bytes_*`). Update dashboards and
+configs per these tables:
+
+### Metrics
+
+| Old | New | Notes |
+|-----|-----|-------|
+| `aerospike_ttl_counts_hist` | `aerospike_ttl_expiry_count_hist` | rename only |
+| `aerospike_ttl_kib_hist` | `aerospike_ttl_expiry_bytes_hist` | **unit changed KiB → bytes** (multiply old thresholds by 1024); `storage_type` label removed |
+| `aerospike_ttl_size_bytes_hist` | unchanged | `metadata_op` label removed |
+| `aerospike_ttl_expiry_quantiles` | `aerospike_ttl_expiry_count_quantiles` | rename only |
+| `aerospike_ttl_expiry_bytes_quantiles` | unchanged | |
+| `aerospike_ttl_record_size_bytes_quantiles` | `aerospike_ttl_size_bytes_quantiles` | rename only |
+
+### Config keys
+
+| Old | New |
+|-----|-----|
+| `countsHistogramEnabled` | `ttlCountsHistogramEnabled` |
+| `kbyteHistogramEnabled` | `ttlBytesHistogramEnabled` |
+
+Config parsing is strict: a leftover old key fails at startup with an unknown-field
+error rather than silently doing nothing.
 
 ## Graceful shutdown
 

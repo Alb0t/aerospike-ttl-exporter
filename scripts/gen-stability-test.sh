@@ -8,8 +8,8 @@
 # community-edition node in docker proves it just as well as prod, with no creds
 # or external host.
 #
-# Seeds 10 canary records, scans them with ALL histogram types enabled (counts,
-# kib, size_bytes), then re-reads gen for every record. Any gen change => the
+# Seeds 10 canary records, scans them with ALL histogram types enabled
+# (expiry_count, expiry_bytes, size_bytes), then re-reads gen for every record. Any gen change => the
 # exporter wrote (FAIL, loud). After the read-only assertion, verifies:
 #   1. All 10 records' gens are unchanged.
 #   2. Prometheus /metrics shows >= 10 observations for each histogram type,
@@ -148,11 +148,10 @@ check_histogram() {
   echo "   ${name}: ${count} observations (>= ${min_samples} required)"
 }
 
-check_histogram "aerospike_ttl_counts_hist" "${CANARY_COUNT}"
-# kib_hist _count is total KiB (size-weighted), NOT record count, so it cannot be
-# compared against CANARY_COUNT. Sub-KiB canaries could sum below the record count
-# yet still be correct. Require only that it produced a positive size-weighted total.
-check_histogram "aerospike_ttl_kib_hist" 1
+check_histogram "aerospike_ttl_expiry_count_hist" "${CANARY_COUNT}"
+# expiry_bytes_hist _count is total bytes (size-weighted), NOT record count, so
+# with 10 canaries it will trivially clear this threshold.
+check_histogram "aerospike_ttl_expiry_bytes_hist" "${CANARY_COUNT}"
 check_histogram "aerospike_ttl_size_bytes_hist" "${CANARY_COUNT}"
 
 echo "==> sample /metrics lines (illustrative output):"
