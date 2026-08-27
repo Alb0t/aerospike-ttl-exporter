@@ -243,7 +243,31 @@ func (c *conf) setConf() {
 	if err := dec.Decode(c); err != nil {
 		log.Fatalf("Failed to unmarshal configfile %s: %v (if you see an unknown field, check the Migration section in README.md — countsHistogramEnabled→ttlCountsHistogramEnabled, kbyteHistogramEnabled→ttlBytesHistogramEnabled)", *configFile, err)
 	}
+	c.setDefaults()
 	c.validate()
+}
+
+func setDefault[T comparable](dst *T, val T) {
+	var zero T
+	if *dst == zero {
+		*dst = val
+	}
+}
+
+func (c *conf) setDefaults() {
+	s := &c.Service
+	setDefault(&s.ListenPort, ":9634")
+	setDefault(&s.AerospikeAddr, "127.0.0.1")
+	setDefault(&s.AerospikePort, 3000)
+	setDefault(&s.FrequencySecs, 300)
+	setDefault(&s.DiscoveryIntervalSecs, 10800)
+	setDefault(&s.DiscoveryBucketCount, 10)
+	d := &s.DiscoveryDefaults
+	setDefault(&d.ScanTotalTimeout, "5m")
+	setDefault(&d.ScanSocketTimeout, "5m")
+	setDefault(&d.PolicyTotalTimeout, "5m")
+	setDefault(&d.PolicySocketTimeout, "5m")
+	setDefault(&d.TTLBuckets.Mode, "auto")
 }
 
 // validate fatals on any malformed bucketConfig in the discovery defaults or in

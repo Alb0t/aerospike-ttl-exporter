@@ -45,6 +45,7 @@ service:
     policySocketTimeout: 20m
     recordsPerSecond: 100
     sizeHistogramEnabled: true
+    ttlBytesHistogramEnabled: true  # enable expiry_bytes_hist (size-weighted TTL histogram)
     # ttlBuckets.mode: auto -> discovery fits TTL buckets to each set's live ttl
     # histogram (the discovery default; only valid for ttlBuckets). The fitted
     # range is snapped to whole display units so sub-unit drift between passes

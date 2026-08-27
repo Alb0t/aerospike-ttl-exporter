@@ -1,32 +1,24 @@
 ---
-# Auto-discovery mode (autoDiscover: true), no overrides.
+# Auto-discovery mode with tuned defaults (no per-set overrides).
 #
 # The exporter asks Aerospike which namespaces/sets exist, reads each set's
-# default-ttl and live TTL histogram, and fits the TTL buckets automatically —
-# no monitor entries needed. discoveryDefaults supplies the scan/perf/feature
-# settings applied to every discovered set.
+# default-ttl and live TTL histogram, and fits the TTL buckets automatically.
+# discoveryDefaults supplies the scan/perf/feature settings applied to every
+# discovered set. Fields omitted here fall back to built-in defaults
+# (see conf.yaml for the full annotated reference).
 service:
-  listenPort: :9634
-  aerospikeAddr: 127.0.0.1
-  aerospikePort: 3000
-  skipNodeCheck: false
-  frequencySecs: 60
-  verbose: false
-
   autoDiscover: true
-  discoveryIntervalSecs: 300 # re-discover/re-fit every 5m
-  discoveryBucketCount: 10 # number of TTL bins per set
-  discoveryRangePaddingPct: 25 # headroom above observed max TTL (keeps drift out of +Inf)
+  frequencySecs: 60
+  discoveryIntervalSecs: 300 # re-discover/re-fit every 5m (default: 3h)
+  discoveryRangePaddingPct: 25 # headroom above observed max TTL
 
   discoveryDefaults:
-    recordCount: -1
     scanPercent: 1.0
-    reportCount: 300000
-    scanTotalTimeout: 20m
+    recordsPerSecond: 100
+    scanTotalTimeout: 20m # default: 5m — raised for large sets
     scanSocketTimeout: 20m
     policyTotalTimeout: 20m
     policySocketTimeout: 20m
-    recordsPerSecond: 100
     ttlBytesHistogramEnabled: true
     sizeHistogramEnabled: true
     ttlBuckets:
@@ -37,10 +29,4 @@ service:
       min: 1
       max: 8389000 # 8 MiB — max aerospike record size (7.0+)
       count: 10
-    # ttlCountsHistogramEnabled: true  # expiry_count_hist, TTL-by-counts (default: true)
-    # quantileTargets: blanket default for all quantile dimensions.
-    # quantileTargets: [0.20, 0.50, 0.90, 0.99]
-    # Per-dimension overrides (fall back to quantileTargets if omitted):
-    # ttlCountsQuantileTargets: [0.20, 0.50, 0.90, 0.99]
-    # sizeQuantileTargets: [0.20, 0.50, 0.90, 0.99]
-    # ttlBytesQuantileTargets: [0.20, 0.50, 0.90, 0.99]
+    # quantileTargets: [0.20, 0.50, 0.90, 0.99]  # blanket default (built-in)

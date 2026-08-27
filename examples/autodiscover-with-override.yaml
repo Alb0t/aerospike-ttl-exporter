@@ -1,44 +1,45 @@
 ---
-# Auto-discovery with per-set overrides (autoDiscover: true + monitor entries).
+# Auto-discovery with per-set overrides — "kitchen sink" showing every field.
 #
 # Discovery handles every set automatically. Each monitor entry below matches a
 # discovered set by namespace+set and overrides ONLY the fields it sets
 # (field-by-field). Bucket blocks (ttlBuckets/sizeBuckets) replace wholesale —
 # a present block entirely supplants the discovered/default one.
 service:
-  listenPort: :9634
-  aerospikeAddr: 127.0.0.1
-  aerospikePort: 3000
-  skipNodeCheck: false
-  frequencySecs: 60
-  verbose: false
+  listenPort: :9634              # default
+  aerospikeAddr: 127.0.0.1      # default
+  aerospikePort: 3000            # default
+  skipNodeCheck: false           # default; true = skip local-node check (testing only)
+  frequencySecs: 60              # scan interval (default: 300)
+  verbose: false                 # default
 
   autoDiscover: true
-  discoveryIntervalSecs: 300
-  discoveryBucketCount: 10
-  discoveryRangePaddingPct: 25
+  discoveryIntervalSecs: 300     # re-discover interval (default: 10800)
+  discoveryBucketCount: 10       # TTL bins per set (default)
+  discoveryRangePaddingPct: 25   # headroom above observed max TTL; 0 = none
+  discoveryOutlierPct: 1         # ignore buckets < 1% of total; 0 = no filtering
 
   discoveryDefaults:
-    recordCount: -1
-    scanPercent: 1.0
-    reportCount: 300000
-    scanTotalTimeout: 20m
-    scanSocketTimeout: 20m
-    policyTotalTimeout: 20m
-    policySocketTimeout: 20m
-    recordsPerSecond: 100
-    ttlBytesHistogramEnabled: true
-    sizeHistogramEnabled: true
+    recordCount: -1              # -1 = no cap (default when omitted)
+    scanPercent: 1.0             # sample ~1% of records
+    reportCount: 300000          # verbose progress every N records
+    scanTotalTimeout: 20m        # default: 5m
+    scanSocketTimeout: 20m       # default: 5m
+    policyTotalTimeout: 20m      # default: 5m
+    policySocketTimeout: 20m     # default: 5m
+    recordsPerSecond: 100        # throttle; 0 = unlimited
+    ttlCountsHistogramEnabled: true   # expiry_count_hist (default: true)
+    ttlBytesHistogramEnabled: true    # expiry_bytes_hist
+    sizeHistogramEnabled: true        # size_bytes_hist
     ttlBuckets:
       mode: auto
-      scale: linear
+      scale: linear              # linear|exponential; exponential for skewed TTLs
     sizeBuckets:
       mode: exponential
       min: 1
-      max: 8389000
+      max: 8389000               # 8 MiB — max aerospike record size (7.0+)
       count: 10
-    # ttlCountsHistogramEnabled: true  # expiry_count_hist, TTL-by-counts (default: true)
-    # quantileTargets: [0.20, 0.50, 0.90, 0.99]  # blanket default; override per set below
+    quantileTargets: [0.20, 0.50, 0.90, 0.99]  # blanket default for all dimensions
     # Per-dimension overrides (fall back to quantileTargets if omitted):
     # ttlCountsQuantileTargets: [0.20, 0.50, 0.90, 0.99]
     # sizeQuantileTargets: [0.20, 0.50, 0.90, 0.99]
@@ -57,12 +58,11 @@ monitor:
 
   # audit:log has a fixed contractual retention — pin explicit static buckets
   # instead of auto-fitting, and skip the size histogram for this set.
-  # audit:log — override quantile targets per dimension; disable size quantiles
   - namespace: audit
     set: log
     sizeHistogramEnabled: false
     ttlCountsQuantileTargets: [0.50, 0.99]
-    sizeQuantileTargets: []          # disable size quantiles for this set
+    sizeQuantileTargets: []              # disable size quantiles for this set
     ttlBytesQuantileTargets: [0.50, 0.99]
     ttlBuckets:
       mode: static

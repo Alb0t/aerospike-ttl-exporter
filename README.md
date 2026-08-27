@@ -205,14 +205,34 @@ Usage of ./aerospike-ttl-exporter:
 
 1. Grab a release from https://github.com/Alb0t/aerospike-ttl-exporter/releases
 2. Create a config file. Start from a ready-to-edit example:
+   - [`examples/minimal.yaml`](examples/minimal.yaml) — **start here.** Bare minimum: `autoDiscover: true` and nothing else. Built-in defaults handle the rest.
+   - [`examples/autodiscover.yaml`](examples/autodiscover.yaml) — auto-discovery with tuned scan/perf settings (custom timeouts, throttle, etc).
+   - [`examples/autodiscover-with-override.yaml`](examples/autodiscover-with-override.yaml) — **kitchen sink.** Every field shown, plus per-set `monitor:` overrides (exponential scale on one set, pinned static buckets on another).
    - [`examples/manual.yaml`](examples/manual.yaml) — `autoDiscover: false`; you list sets and bucket boundaries explicitly.
-   - [`examples/autodiscover.yaml`](examples/autodiscover.yaml) — `autoDiscover: true`; buckets fit automatically, no `monitor:` entries.
-   - [`examples/autodiscover-with-override.yaml`](examples/autodiscover-with-override.yaml) — auto-discovery plus per-set `monitor:` overrides (exponential scale on one set, pinned static buckets on another).
 
    `conf.yaml` is the fully-commented reference for every field.
 3. Run the binary: `./aerospike-ttl-exporter -configFile /path/to/conf.yaml`
 
-The config file is YAML and parsed **strictly**: an unknown or misspelled key is a fatal startup error (this catches configs still using pre-rename keys — see Migration below). With few exceptions there are **no default values** — an omitted key gets Go's zero value for that type (e.g. `0` for `int`, `""` for `string`). Don't omit fields. The exceptions: `ttlCountsHistogramEnabled` defaults to `true`, quantile targets default to `[0.20, 0.50, 0.90, 0.99]`, `discoveryIntervalSecs` falls back to `frequencySecs`, and in discovery mode an unset `recordCount` in `discoveryDefaults` is coerced to `-1` (no cap).
+The config file is YAML and parsed **strictly**: an unknown or misspelled key is a fatal startup error (this catches configs still using pre-rename keys — see Migration below).
+
+Most operational fields have sensible built-in defaults — see the table below. A minimal config can be as short as `service: {autoDiscover: true}` (see [`examples/minimal.yaml`](examples/minimal.yaml)). Fields without defaults (e.g. `sizeHistogramEnabled`, `ttlBytesHistogramEnabled`, `recordsPerSecond`, `scanPercent`) must be set explicitly when needed.
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `listenPort` | `:9634` | |
+| `aerospikeAddr` | `127.0.0.1` | |
+| `aerospikePort` | `3000` | |
+| `frequencySecs` | `300` | 5 minutes |
+| `discoveryIntervalSecs` | `10800` | 3 hours; falls back to `frequencySecs` if set to `<= 0` |
+| `discoveryBucketCount` | `10` | |
+| `scanTotalTimeout` | `5m` | Discovery defaults only |
+| `scanSocketTimeout` | `5m` | Discovery defaults only |
+| `policyTotalTimeout` | `5m` | Discovery defaults only |
+| `policySocketTimeout` | `5m` | Discovery defaults only |
+| `ttlBuckets.mode` | `auto` | Discovery defaults only |
+| `ttlCountsHistogramEnabled` | `true` | |
+| `quantileTargets` | `[0.20, 0.50, 0.90, 0.99]` | Blanket default for all quantile dimensions |
+| `recordCount` | `-1` (no cap) | In discovery mode, 0 is coerced to -1 |
 
 ## Operating modes
 
