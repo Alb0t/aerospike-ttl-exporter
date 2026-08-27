@@ -349,12 +349,6 @@ func measureRecordSize(client *as.Client, key *as.Key, operations []*as.Operatio
 		logrus.Error("Could not convert 'recordsize' to int")
 	}
 
-	// if config.Service.Verbose {
-	// 	logrus.Debug("Found devsize: ", devsize, " converted to KiB -> ", devsize_kb)
-	// 	logrus.Debug("Found memsize: ", memsize, " converted to KiB -> ", memsize_kb)
-	// }
-
-	// return it as KiB
 	return recordsize, err
 }
 
@@ -411,15 +405,16 @@ func (r *ttlRange) publish(namespace, set string) {
 // the ttl range, returning true when the record was expirable (and thus counted
 // toward the exported total). Non-expirable records are skipped.
 func processRecord(rec *as.Result, element monconf, hs *histSet, ttls *ttlRange) bool {
+	needsSize := element.SizeHistogramEnabled || (hs.quantiles != nil && hs.quantiles.needsSize())
 	if rec.Record.Expiration == NON_EXPIRABLE_TTL_VALUE {
-		if element.SizeHistogramEnabled || hs.quantiles != nil {
+		if needsSize {
 			recordsize, err := measureRecordSize(client.Load(), rec.Record.Key, measureOps, opPolicy)
 			if err != nil && err != as.ErrKeyNotFound {
 				logrus.Errorf("Failure fetching record size. Err: %v", err)
 			}
 			if recordsize != 0 {
 				if element.SizeHistogramEnabled && hs.sizes != nil {
-					hs.sizes.WithLabelValues("recordsize").Observe(float64(recordsize))
+					hs.sizes.WithLabelValues().Observe(float64(recordsize))
 				}
 				if hs.quantiles != nil {
 					hs.quantiles.observeSize(float64(recordsize))
@@ -431,7 +426,7 @@ func processRecord(rec *as.Result, element monconf, hs *histSet, ttls *ttlRange)
 	ttls.observe(rec.Record.Expiration)
 	modifier := hs.modifier
 	if modifier < 1 {
-		modifier = 1 // guard div-by-zero; expirable sets always set this
+		modifier = 1
 	}
 	expireTime := float64(rec.Record.Expiration) / float64(modifier)
 	if hs.counts != nil {
@@ -445,10 +440,11 @@ func processRecord(rec *as.Result, element monconf, hs *histSet, ttls *ttlRange)
 }
 
 // observeRecordSize reads the record's size (a metadata-only, read-only Operate)
-// and feeds the kib/size histograms when enabled. The read is skipped entirely
+// and feeds the expiry-bytes/size histograms when enabled. The read is skipped entirely
 // when neither histogram is enabled, avoiding a per-record server round-trip.
 func observeRecordSize(rec *as.Result, element monconf, hs *histSet, expireTime float64) {
-	if !element.KByteHistogramEnabled && !element.SizeHistogramEnabled && hs.quantiles == nil {
+	quantilesNeedSize := hs.quantiles != nil && hs.quantiles.needsSize()
+	if !element.TTLBytesHistogramEnabled && !element.SizeHistogramEnabled && !quantilesNeedSize {
 		return
 	}
 	// no-op "Operation"/"Expression" returning metadata only; should not incur IO
@@ -457,14 +453,15 @@ func observeRecordSize(rec *as.Result, element monconf, hs *histSet, expireTime 
 	if err != nil && err != as.ErrKeyNotFound { // key-not-found is debug-logged earlier and non-fatal.
 		logrus.Errorf("Failure fetching record size. Err: %v", err)
 	}
-	if element.KByteHistogramEnabled && hs.bytes != nil {
+	if element.TTLBytesHistogramEnabled && hs.bytes != nil {
 		hs.bytes.addWeight(expireTime, recordsize)
 	}
 	if element.SizeHistogramEnabled && hs.sizes != nil && recordsize != 0 {
-		hs.sizes.WithLabelValues("recordsize").Observe(float64(recordsize))
+		hs.sizes.WithLabelValues().Observe(float64(recordsize))
 	}
 	if hs.quantiles != nil && recordsize != 0 {
 		hs.quantiles.observeSize(float64(recordsize))
+		hs.quantiles.observeTTLWithSize(expireTime, float64(recordsize))
 	}
 }
 
@@ -549,10 +546,11 @@ func updateStats(namespace string, set string, element monconf, hs *histSet) str
 		return msg
 	}
 
-	// measureRecordSize is needed by both the kib and size histograms; initialize
+	// measureRecordSize is needed by both the expiry-bytes and size histograms; initialize
 	// its read-only (TTLDontUpdate) policy once when either is enabled so the
 	// metadata read never falls back to the client's default write policy.
-	if element.KByteHistogramEnabled || element.SizeHistogramEnabled || hs.quantiles != nil {
+	quantilesNeedSize := hs.quantiles != nil && hs.quantiles.needsSize()
+	if element.TTLBytesHistogramEnabled || element.SizeHistogramEnabled || quantilesNeedSize {
 		measureOps, opPolicy = initRecSizeVars()
 	}
 	counts := drainScan(recs, element, hs, &ttls)

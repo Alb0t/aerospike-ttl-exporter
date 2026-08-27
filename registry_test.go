@@ -42,6 +42,8 @@ func (c *countingRegisterer) Unregister(col prometheus.Collector) bool {
 	return c.inner.Unregister(col)
 }
 
+func boolPtr(b bool) *bool { return &b }
+
 func expirableSet(ns, set string, buckets []float64) effectiveSet {
 	return effectiveSet{
 		namespace: ns,
@@ -220,5 +222,211 @@ func TestRegistryChangedSigUnregistersThenReRegisters(t *testing.T) {
 	}
 	if got := cr.registers[second.counts]; got != 1 {
 		t.Errorf("new counts collector: register count = %d, want 1", got)
+	}
+}
+
+func TestBuildHistSetFeatureToggles(t *testing.T) {
+	buckets := []float64{0, 10, 20}
+	sizeBuckets := bucketConfig{Mode: "exponential", Min: "1", Max: "8389000", Count: 5}
+
+	tests := []struct {
+		name          string
+		cfg           monconf
+		expirable     bool
+		wantCounts    bool
+		wantBytes     bool
+		wantSizes     bool
+		wantQuantiles bool
+		wantNeedsSize bool
+	}{
+		{
+			name:          "all defaults (expirable)",
+			cfg:           monconf{},
+			expirable:     true,
+			wantCounts:    true,  // ttlCountsHistogramEnabled nil → true
+			wantBytes:     false, // ttlBytesHistogramEnabled false
+			wantSizes:     false, // sizeHistogramEnabled false
+			wantQuantiles: true,  // quantileTargets nil → defaults
+			wantNeedsSize: true,  // size+ttlBytes quantiles enabled by default
+		},
+		{
+			name:          "counts disabled",
+			cfg:           monconf{TTLCountsHistogramEnabled: boolPtr(false)},
+			expirable:     true,
+			wantCounts:    false,
+			wantQuantiles: true,
+			wantNeedsSize: true,
+		},
+		{
+			name:          "counts explicitly enabled",
+			cfg:           monconf{TTLCountsHistogramEnabled: boolPtr(true)},
+			expirable:     true,
+			wantCounts:    true,
+			wantQuantiles: true,
+			wantNeedsSize: true,
+		},
+		{
+			name:          "all histograms enabled",
+			cfg:           monconf{TTLCountsHistogramEnabled: boolPtr(true), TTLBytesHistogramEnabled: true, SizeHistogramEnabled: true, SizeBuckets: sizeBuckets},
+			expirable:     true,
+			wantCounts:    true,
+			wantBytes:     true,
+			wantSizes:     true,
+			wantQuantiles: true,
+			wantNeedsSize: true,
+		},
+		{
+			name:          "all quantiles disabled via blanket",
+			cfg:           monconf{QuantileTargets: []float64{}},
+			expirable:     true,
+			wantCounts:    true,
+			wantQuantiles: false,
+		},
+		{
+			name:          "only ttl counts quantiles enabled",
+			cfg:           monconf{TTLCountsQuantileTargets: []float64{0.50}, SizeQuantileTargets: []float64{}, TTLBytesQuantileTargets: []float64{}},
+			expirable:     true,
+			wantCounts:    true,
+			wantQuantiles: true,
+			wantNeedsSize: false,
+		},
+		{
+			name:          "only size quantiles enabled",
+			cfg:           monconf{TTLCountsQuantileTargets: []float64{}, SizeQuantileTargets: []float64{0.50, 0.99}, TTLBytesQuantileTargets: []float64{}},
+			expirable:     true,
+			wantCounts:    true,
+			wantQuantiles: true,
+			wantNeedsSize: true,
+		},
+		{
+			name:          "only ttl bytes quantiles enabled",
+			cfg:           monconf{TTLCountsQuantileTargets: []float64{}, SizeQuantileTargets: []float64{}, TTLBytesQuantileTargets: []float64{0.90}},
+			expirable:     true,
+			wantCounts:    true,
+			wantQuantiles: true,
+			wantNeedsSize: true,
+		},
+		{
+			name:          "per-dimension overrides blanket",
+			cfg:           monconf{QuantileTargets: []float64{0.50}, TTLCountsQuantileTargets: []float64{0.20, 0.80}, SizeQuantileTargets: []float64{}},
+			expirable:     true,
+			wantCounts:    true,
+			wantQuantiles: true,
+			wantNeedsSize: true, // ttlBytes falls back to blanket [0.50]
+		},
+		{
+			name:          "non-expirable with size quantiles only",
+			cfg:           monconf{TTLCountsQuantileTargets: []float64{}, SizeQuantileTargets: []float64{0.50}, TTLBytesQuantileTargets: []float64{}},
+			expirable:     false,
+			wantCounts:    false,
+			wantQuantiles: true,
+			wantNeedsSize: true,
+		},
+		{
+			name:          "everything disabled",
+			cfg:           monconf{TTLCountsHistogramEnabled: boolPtr(false), QuantileTargets: []float64{}},
+			expirable:     true,
+			wantCounts:    false,
+			wantBytes:     false,
+			wantSizes:     false,
+			wantQuantiles: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := prometheus.NewRegistry()
+			es := effectiveSet{
+				namespace: "ns", set: "s", buckets: buckets,
+				ttlUnit: "seconds", modifier: 1,
+				expirable: tt.expirable, cfg: tt.cfg,
+			}
+			hs := buildHistSet(reg, es, "")
+
+			if got := (hs.counts != nil); got != tt.wantCounts {
+				t.Errorf("counts: got %v, want %v", got, tt.wantCounts)
+			}
+			if got := (hs.bytes != nil); got != tt.wantBytes {
+				t.Errorf("bytes: got %v, want %v", got, tt.wantBytes)
+			}
+			if got := (hs.sizes != nil); got != tt.wantSizes {
+				t.Errorf("sizes: got %v, want %v", got, tt.wantSizes)
+			}
+			if got := (hs.quantiles != nil); got != tt.wantQuantiles {
+				t.Errorf("quantiles: got %v, want %v", got, tt.wantQuantiles)
+			}
+			if tt.wantQuantiles && tt.wantNeedsSize {
+				if !hs.quantiles.needsSize() {
+					t.Error("quantiles.needsSize() = false, want true")
+				}
+			}
+			if tt.wantQuantiles && !tt.wantNeedsSize {
+				if hs.quantiles.needsSize() {
+					t.Error("quantiles.needsSize() = true, want false")
+				}
+			}
+		})
+	}
+}
+
+func TestQuantileCollectorPerDimensionObserve(t *testing.T) {
+	qc := newQuantileCollector("ns", "s", "seconds", quantileDimTargets{
+		ttl:  []float64{0.50},
+		size: nil, // disabled
+	})
+
+	for i := 1; i <= 10; i++ {
+		qc.observeTTL(float64(i))
+		qc.observeSize(float64(i * 100)) // should be no-op
+	}
+	qc.finalize()
+
+	if qc.liveTTL == nil {
+		t.Error("TTL quantile should be computed")
+	}
+	if qc.liveSize != nil {
+		t.Error("size quantile should be nil when dimension disabled")
+	}
+}
+
+func TestResolveQuantileDims(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         monconf
+		wantTTLLen  int
+		wantSizeLen int
+		wantBytLen  int
+	}{
+		{"all defaults", monconf{}, 4, 4, 4},
+		{"blanket override", monconf{QuantileTargets: []float64{0.50}}, 1, 1, 1},
+		{"blanket empty disables all", monconf{QuantileTargets: []float64{}}, 0, 0, 0},
+		{"per-dim overrides blanket", monconf{QuantileTargets: []float64{0.50}, TTLCountsQuantileTargets: []float64{0.20, 0.80}}, 2, 1, 1},
+		{"per-dim empty overrides blanket", monconf{QuantileTargets: []float64{0.50}, SizeQuantileTargets: []float64{}}, 1, 0, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dims := resolveQuantileDims(tt.cfg)
+			if len(dims.ttl) != tt.wantTTLLen {
+				t.Errorf("ttl targets len = %d, want %d", len(dims.ttl), tt.wantTTLLen)
+			}
+			if len(dims.size) != tt.wantSizeLen {
+				t.Errorf("size targets len = %d, want %d", len(dims.size), tt.wantSizeLen)
+			}
+			if len(dims.ttlSize) != tt.wantBytLen {
+				t.Errorf("ttlSize targets len = %d, want %d", len(dims.ttlSize), tt.wantBytLen)
+			}
+		})
+	}
+}
+
+func TestCountsHistEnabled(t *testing.T) {
+	if !ttlCountsHistEnabled(nil) {
+		t.Error("nil should default to true")
+	}
+	if !ttlCountsHistEnabled(boolPtr(true)) {
+		t.Error("explicit true should be true")
+	}
+	if ttlCountsHistEnabled(boolPtr(false)) {
+		t.Error("explicit false should be false")
 	}
 }

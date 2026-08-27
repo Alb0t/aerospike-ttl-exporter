@@ -1,0 +1,8 @@
+---
+# Minimal auto-discovery config.
+#
+# Connects to localhost:3000, binds :9634, discovers all namespaces/sets,
+# fits TTL buckets automatically. Everything else uses built-in defaults
+# (see conf.yaml for the full annotated reference).
+service:
+  autoDiscover: true

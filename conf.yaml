@@ -45,6 +45,7 @@ service:
     policySocketTimeout: 20m
     recordsPerSecond: 100
     sizeHistogramEnabled: true
+    ttlBytesHistogramEnabled: true  # enable expiry_bytes_hist (size-weighted TTL histogram)
     # ttlBuckets.mode: auto -> discovery fits TTL buckets to each set's live ttl
     # histogram (the discovery default; only valid for ttlBuckets). The fitted
     # range is snapped to whole display units so sub-unit drift between passes
@@ -61,10 +62,18 @@ service:
       min: 1
       max: 8389000
       count: 10
-    # quantileTargets: exact quantile percentiles computed from the full scan
-    # dataset for TTL and record size distributions. Exposed as Prometheus
-    # Summary metrics. Values must be in (0, 1). Override per set in monitor.
-    # quantileTargets: [0.20, 0.50, 0.90, 0.99]  # default; set to [] to disable
+    # ttlCountsHistogramEnabled: enable expiry_count_hist, the TTL-by-counts
+    # histogram (default: true).
+    # ttlCountsHistogramEnabled: true
+    # quantileTargets: blanket quantile percentiles for all three quantile
+    # dimensions (TTL, size, TTL-by-bytes). Per-dimension keys override this.
+    # Values must be in (0, 1). Default: [0.20, 0.50, 0.90, 0.99].
+    # Set to [] to disable all quantile summaries at once.
+    # quantileTargets: [0.20, 0.50, 0.90, 0.99]
+    # Per-dimension overrides (each falls back to quantileTargets if omitted):
+    # ttlCountsQuantileTargets: [0.50, 0.90, 0.99]
+    # sizeQuantileTargets: [0.50, 0.99]
+    # ttlBytesQuantileTargets: []  # set to [] to disable this dimension only
   ## --------------------------------------------------------------------------
 
 monitor:
@@ -106,9 +115,9 @@ monitor:
     policyTotalTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
     policySocketTimeout: 20m # https://golang.org/pkg/time/#ParseDuration
     recordsPerSecond: 100 # Utilizes the scan policy to limit RPS.
-    ## KiB exports
+    ## Size-weighted TTL exports (expiry_bytes_hist)
     # Bucket counts represent total bytes per TTL bucket (O(1) per record).
-    kbyteHistogramEnabled: true
+    ttlBytesHistogramEnabled: true
     ## Bucket Size exports
     sizeHistogramEnabled: true
     # sizeBuckets: record-size histogram boundaries in raw bytes. mode =

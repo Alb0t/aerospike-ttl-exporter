@@ -7,7 +7,6 @@ service:
   aerospikeAddr: 127.0.0.1
   aerospikePort: 3000
   skipNodeCheck: true
-  failOnClusterChange: false
   frequencySecs: 1
   verbose: false
   autoDiscover: true
@@ -23,7 +22,7 @@ service:
     policyTotalTimeout: 20m
     policySocketTimeout: 20m
     sizeHistogramEnabled: true
-    kbyteHistogramEnabled: true
+    ttlBytesHistogramEnabled: true
     ttlBuckets:
       mode: auto
     sizeBuckets:

@@ -25,9 +25,12 @@ func TestExampleConfigsValid(t *testing.T) {
 		if rerr != nil {
 			os.Exit(1)
 		}
-		if yaml.Unmarshal(raw, &c) != nil {
+		dec := yaml.NewDecoder(strings.NewReader(string(raw)))
+		dec.KnownFields(true)
+		if dec.Decode(&c) != nil {
 			os.Exit(1)
 		}
+		c.setDefaults()
 		c.validate() // fatals (os.Exit) on invalid config
 		return
 	}
@@ -306,4 +309,125 @@ func TestValidatePassesSizeHistDisabled(t *testing.T) {
 	c.Service.AutoDiscover = true
 	c.Service.DiscoveryBucketCount = 10
 	c.validate()
+}
+
+func TestStrictDecodeRejectsStaleKeys(t *testing.T) {
+	raw := `
+service:
+  listenPort: ":9634"
+  frequencySecs: 1
+monitor:
+  - namespace: ns1
+    set: s1
+    kbyteHistogramEnabled: true
+    ttlBuckets:
+      mode: static
+      static: [1d]
+`
+	var c conf
+	dec := yaml.NewDecoder(strings.NewReader(raw))
+	dec.KnownFields(true)
+	if err := dec.Decode(&c); err == nil {
+		t.Fatal("expected error for stale key kbyteHistogramEnabled, got nil")
+	}
+}
+
+func TestStrictDecodeRejectsCountsHistogramEnabled(t *testing.T) {
+	raw := `
+service:
+  listenPort: ":9634"
+  frequencySecs: 1
+monitor:
+  - namespace: ns1
+    set: s1
+    countsHistogramEnabled: true
+    ttlBuckets:
+      mode: static
+      static: [1d]
+`
+	var c conf
+	dec := yaml.NewDecoder(strings.NewReader(raw))
+	dec.KnownFields(true)
+	if err := dec.Decode(&c); err == nil {
+		t.Fatal("expected error for stale key countsHistogramEnabled, got nil")
+	}
+}
+
+func TestSetDefaults(t *testing.T) {
+	raw := `
+service:
+  autoDiscover: true
+`
+	var c conf
+	dec := yaml.NewDecoder(strings.NewReader(raw))
+	dec.KnownFields(true)
+	if err := dec.Decode(&c); err != nil {
+		t.Fatal(err)
+	}
+	c.setDefaults()
+
+	s := c.Service
+	if s.ListenPort != ":9634" {
+		t.Errorf("listenPort = %q, want :9634", s.ListenPort)
+	}
+	if s.AerospikeAddr != "127.0.0.1" {
+		t.Errorf("aerospikeAddr = %q, want 127.0.0.1", s.AerospikeAddr)
+	}
+	if s.AerospikePort != 3000 {
+		t.Errorf("aerospikePort = %d, want 3000", s.AerospikePort)
+	}
+	if s.FrequencySecs != 300 {
+		t.Errorf("frequencySecs = %d, want 300", s.FrequencySecs)
+	}
+	if s.DiscoveryIntervalSecs != 10800 {
+		t.Errorf("discoveryIntervalSecs = %d, want 10800", s.DiscoveryIntervalSecs)
+	}
+	if s.DiscoveryBucketCount != 10 {
+		t.Errorf("discoveryBucketCount = %d, want 10", s.DiscoveryBucketCount)
+	}
+	d := s.DiscoveryDefaults
+	if d.ScanTotalTimeout != "5m" {
+		t.Errorf("scanTotalTimeout = %q, want 5m", d.ScanTotalTimeout)
+	}
+	if d.TTLBuckets.Mode != "auto" {
+		t.Errorf("ttlBuckets.mode = %q, want auto", d.TTLBuckets.Mode)
+	}
+}
+
+func TestSetDefaultsNoOverwrite(t *testing.T) {
+	raw := `
+service:
+  listenPort: ":8080"
+  frequencySecs: 60
+  discoveryDefaults:
+    scanTotalTimeout: 10m
+    scanSocketTimeout: 10m
+    policyTotalTimeout: 10m
+    policySocketTimeout: 10m
+    ttlBuckets:
+      mode: linear
+      start: 1d
+      width: 1d
+      count: 5
+`
+	var c conf
+	dec := yaml.NewDecoder(strings.NewReader(raw))
+	dec.KnownFields(true)
+	if err := dec.Decode(&c); err != nil {
+		t.Fatal(err)
+	}
+	c.setDefaults()
+
+	if c.Service.ListenPort != ":8080" {
+		t.Errorf("listenPort overwritten to %q", c.Service.ListenPort)
+	}
+	if c.Service.FrequencySecs != 60 {
+		t.Errorf("frequencySecs overwritten to %d", c.Service.FrequencySecs)
+	}
+	if c.Service.DiscoveryDefaults.ScanTotalTimeout != "10m" {
+		t.Errorf("scanTotalTimeout overwritten to %q", c.Service.DiscoveryDefaults.ScanTotalTimeout)
+	}
+	if c.Service.DiscoveryDefaults.TTLBuckets.Mode != "linear" {
+		t.Errorf("ttlBuckets.mode overwritten to %q", c.Service.DiscoveryDefaults.TTLBuckets.Mode)
+	}
 }

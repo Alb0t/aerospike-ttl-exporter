@@ -41,11 +41,13 @@ func nsSetKey(ns, set string) string {
 // Two effectiveSets with equal signatures produce identical collectors, so the
 // registry can skip unregister/re-register churn when the signature is unchanged.
 func (e effectiveSet) signature() string {
-	return fmt.Sprintf("exp=%t|unit=%s|buckets=%v|kb=%t|size=%t|sb=%+v|qt=%v",
+	dims := resolveQuantileDims(e.cfg)
+	return fmt.Sprintf("exp=%t|unit=%s|buckets=%v|ttlcounts=%t|ttlbytes=%t|size=%t|sb=%+v|qt_ttl=%v|qt_size=%v|qt_ttlsize=%v",
 		e.expirable, e.ttlUnit, e.buckets,
-		e.cfg.KByteHistogramEnabled,
+		ttlCountsHistEnabled(e.cfg.TTLCountsHistogramEnabled),
+		e.cfg.TTLBytesHistogramEnabled,
 		e.cfg.SizeHistogramEnabled, e.cfg.SizeBuckets,
-		resolveQuantileTargets(e.cfg.QuantileTargets))
+		dims.ttl, dims.size, dims.ttlSize)
 }
 
 // histSet holds the live collectors for one ns:set plus the signature they were
@@ -55,7 +57,7 @@ type histSet struct {
 	namespace string // retained so prune can delete this set's gauge series
 	set       string
 	counts    *prometheus.HistogramVec
-	bytes     *kibCollector
+	bytes     *expiryBytesCollector
 	sizes     *prometheus.HistogramVec
 	quantiles *quantileCollector
 	modifier  int
@@ -146,46 +148,51 @@ func dropSetGauges(ns, set string) {
 	quantileRefreshTS.DeleteLabelValues(ns, set)
 }
 
-// newCountsHist builds the counts_hist (records-per-ttl-bucket) collector. It is
-// the single definition of this metric, shared by the discovery registry and the
-// legacy setup path so their Name/Help/labels can never drift apart.
-func newCountsHist(namespace, set, ttlUnit string, buckets []float64) *prometheus.HistogramVec {
+func newExpiryCountHist(namespace, set, ttlUnit string, buckets []float64) *prometheus.HistogramVec {
 	return prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:   "aerospike_ttl",
-		Name:        "counts_hist",
-		Help:        "Histogram of how many records fall into each ttl bucket.",
+		Name:        "expiry_count_hist",
+		Help:        "Histogram of how many records fall into each TTL bucket.",
 		Buckets:     buckets,
 		ConstLabels: prometheus.Labels{"namespace": namespace, "set": set, "ttlUnit": ttlUnit},
 	}, []string{})
 }
 
-// newSizesHist builds the size_bytes_hist (record-size distribution) collector.
-// Single shared definition, see newCountsHist.
 func newSizesHist(namespace, set string, buckets []float64) *prometheus.HistogramVec {
 	return prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:   "aerospike_ttl",
 		Name:        "size_bytes_hist",
-		Help:        "Histogram of device/memory/record sizes of records observed by Aerospike TTL Exporter.",
+		Help:        "Histogram of record sizes (bytes) observed by Aerospike TTL Exporter.",
 		Buckets:     buckets,
 		ConstLabels: prometheus.Labels{"namespace": namespace, "set": set},
-	}, []string{"metadata_op"})
+	}, []string{})
 }
 
 // buildHistSet constructs and registers the collectors selected by an
 // effectiveSet against reg. Shared by the discovery registry and the legacy
 // startup path so collector selection and registration gating cannot drift
 // between the two modes.
+// resolveQuantileDims builds the per-dimension target slices from a monconf,
+// falling back per-dimension → blanket quantileTargets → defaults.
+func resolveQuantileDims(cfg monconf) quantileDimTargets {
+	return quantileDimTargets{
+		ttl:     resolvePerDimensionTargets(cfg.TTLCountsQuantileTargets, cfg.QuantileTargets),
+		size:    resolvePerDimensionTargets(cfg.SizeQuantileTargets, cfg.QuantileTargets),
+		ttlSize: resolvePerDimensionTargets(cfg.TTLBytesQuantileTargets, cfg.QuantileTargets),
+	}
+}
+
 func buildHistSet(reg prometheus.Registerer, e effectiveSet, sig string) *histSet {
 	hs := &histSet{namespace: e.namespace, set: e.set, modifier: e.modifier, sig: sig}
 
-	if e.expirable {
-		hs.counts = newCountsHist(e.namespace, e.set, e.ttlUnit, e.buckets)
+	if e.expirable && ttlCountsHistEnabled(e.cfg.TTLCountsHistogramEnabled) {
+		hs.counts = newExpiryCountHist(e.namespace, e.set, e.ttlUnit, e.buckets)
 		reg.MustRegister(hs.counts)
+	}
 
-		if e.cfg.KByteHistogramEnabled {
-			hs.bytes = newKibCollector(e.namespace, e.set, e.ttlUnit, e.buckets)
-			reg.MustRegister(hs.bytes)
-		}
+	if e.expirable && e.cfg.TTLBytesHistogramEnabled {
+		hs.bytes = newExpiryBytesCollector(e.namespace, e.set, e.ttlUnit, e.buckets)
+		reg.MustRegister(hs.bytes)
 	}
 
 	if e.cfg.SizeHistogramEnabled {
@@ -193,8 +200,9 @@ func buildHistSet(reg prometheus.Registerer, e effectiveSet, sig string) *histSe
 		reg.MustRegister(hs.sizes)
 	}
 
-	if targets := resolveQuantileTargets(e.cfg.QuantileTargets); len(targets) > 0 {
-		hs.quantiles = newQuantileCollector(e.namespace, e.set, e.ttlUnit, targets)
+	dims := resolveQuantileDims(e.cfg)
+	if dims.anyEnabled() {
+		hs.quantiles = newQuantileCollector(e.namespace, e.set, e.ttlUnit, dims)
 		reg.MustRegister(hs.quantiles)
 	}
 
